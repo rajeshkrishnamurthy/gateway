@@ -36,8 +36,8 @@ func TestSendSMSMissingReferenceID(t *testing.T) {
 	if resp.Status != "rejected" {
 		t.Fatalf("expected rejected status, got %q", resp.Status)
 	}
-	if resp.Reason != "missing_reference_id" {
-		t.Fatalf("expected missing_reference_id, got %q", resp.Reason)
+	if resp.Reason != "invalid_request" {
+		t.Fatalf("expected invalid_request, got %q", resp.Reason)
 	}
 }
 
@@ -57,8 +57,8 @@ func TestSendSMSMissingTo(t *testing.T) {
 	if resp.ReferenceID != "ref-1" {
 		t.Fatalf("expected referenceId ref-1, got %q", resp.ReferenceID)
 	}
-	if resp.Reason != "missing_to" {
-		t.Fatalf("expected missing_to, got %q", resp.Reason)
+	if resp.Reason != "invalid_request" {
+		t.Fatalf("expected invalid_request, got %q", resp.Reason)
 	}
 }
 
@@ -78,8 +78,83 @@ func TestSendSMSMissingMessage(t *testing.T) {
 	if resp.ReferenceID != "ref-2" {
 		t.Fatalf("expected referenceId ref-2, got %q", resp.ReferenceID)
 	}
-	if resp.Reason != "missing_message" {
-		t.Fatalf("expected missing_message, got %q", resp.Reason)
+	if resp.Reason != "invalid_request" {
+		t.Fatalf("expected invalid_request, got %q", resp.Reason)
+	}
+}
+
+func TestSendSMSInvalidRecipient(t *testing.T) {
+	gw, err := New(Config{Provider: "24x7"})
+	if err != nil {
+		t.Fatalf("new gateway: %v", err)
+	}
+
+	resp, err := gw.SendSMS(context.Background(), SMSRequest{
+		ReferenceID: "ref-3",
+		To:          "abc123",
+		Message:     "hello",
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest, got %v", err)
+	}
+	if resp.ReferenceID != "ref-3" {
+		t.Fatalf("expected referenceId ref-3, got %q", resp.ReferenceID)
+	}
+	if resp.Reason != "invalid_recipient" {
+		t.Fatalf("expected invalid_recipient, got %q", resp.Reason)
+	}
+}
+
+func TestSendSMSInvalidMessage(t *testing.T) {
+	gw, err := New(Config{Provider: "24x7"})
+	if err != nil {
+		t.Fatalf("new gateway: %v", err)
+	}
+
+	resp, err := gw.SendSMS(context.Background(), SMSRequest{
+		ReferenceID: "ref-4",
+		To:          "15551234567",
+		Message:     "   ",
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest, got %v", err)
+	}
+	if resp.ReferenceID != "ref-4" {
+		t.Fatalf("expected referenceId ref-4, got %q", resp.ReferenceID)
+	}
+	if resp.Reason != "invalid_message" {
+		t.Fatalf("expected invalid_message, got %q", resp.Reason)
+	}
+}
+
+func TestSendSMSDuplicateReference(t *testing.T) {
+	gw, err := New(Config{Provider: "24x7"})
+	if err != nil {
+		t.Fatalf("new gateway: %v", err)
+	}
+
+	_, err = gw.SendSMS(context.Background(), SMSRequest{
+		ReferenceID: "ref-5",
+		To:          "15551234567",
+		Message:     "hello",
+	})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+
+	resp, err := gw.SendSMS(context.Background(), SMSRequest{
+		ReferenceID: "ref-5",
+		To:          "15551234567",
+		Message:     "hello",
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest, got %v", err)
+	}
+	if resp.ReferenceID != "ref-5" {
+		t.Fatalf("expected referenceId ref-5, got %q", resp.ReferenceID)
+	}
+	if resp.Reason != "duplicate_reference" {
+		t.Fatalf("expected duplicate_reference, got %q", resp.Reason)
 	}
 }
 
@@ -90,15 +165,15 @@ func TestSendSMSValidRequestAccepted(t *testing.T) {
 	}
 
 	resp, err := gw.SendSMS(context.Background(), SMSRequest{
-		ReferenceID: "ref-3",
+		ReferenceID: "ref-6",
 		To:          "15551234567",
 		Message:     "hello",
 	})
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
-	if resp.ReferenceID != "ref-3" {
-		t.Fatalf("expected referenceId ref-3, got %q", resp.ReferenceID)
+	if resp.ReferenceID != "ref-6" {
+		t.Fatalf("expected referenceId ref-6, got %q", resp.ReferenceID)
 	}
 	if resp.Status != "accepted" {
 		t.Fatalf("expected accepted status, got %q", resp.Status)
@@ -121,20 +196,20 @@ func TestSendSMSContextCanceled(t *testing.T) {
 	cancel()
 
 	resp, err := gw.SendSMS(ctx, SMSRequest{
-		ReferenceID: "ref-4",
+		ReferenceID: "ref-7",
 		To:          "15551234567",
 		Message:     "hello",
 	})
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
-	if resp.ReferenceID != "ref-4" {
-		t.Fatalf("expected referenceId ref-4, got %q", resp.ReferenceID)
+	if resp.ReferenceID != "ref-7" {
+		t.Fatalf("expected referenceId ref-7, got %q", resp.ReferenceID)
 	}
 	if resp.Status != "rejected" {
 		t.Fatalf("expected rejected status, got %q", resp.Status)
 	}
-	if resp.Reason != "gateway_unavailable" {
-		t.Fatalf("expected gateway_unavailable, got %q", resp.Reason)
+	if resp.Reason != "provider_failure" {
+		t.Fatalf("expected provider_failure, got %q", resp.Reason)
 	}
 }

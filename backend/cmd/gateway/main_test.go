@@ -31,8 +31,8 @@ func TestSMSSendInvalidJSON(t *testing.T) {
 	if resp.Status != "rejected" {
 		t.Fatalf("expected rejected status, got %q", resp.Status)
 	}
-	if resp.Reason != "invalid_json" {
-		t.Fatalf("expected invalid_json, got %q", resp.Reason)
+	if resp.Reason != "invalid_request" {
+		t.Fatalf("expected invalid_request, got %q", resp.Reason)
 	}
 }
 
@@ -56,8 +56,8 @@ func TestSMSSendTrailingJSON(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if resp.Reason != "invalid_json" {
-		t.Fatalf("expected invalid_json, got %q", resp.Reason)
+	if resp.Reason != "invalid_request" {
+		t.Fatalf("expected invalid_request, got %q", resp.Reason)
 	}
 }
 
@@ -81,8 +81,8 @@ func TestSMSSendMissingReferenceID(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if resp.Reason != "missing_reference_id" {
-		t.Fatalf("expected missing_reference_id, got %q", resp.Reason)
+	if resp.Reason != "invalid_request" {
+		t.Fatalf("expected invalid_request, got %q", resp.Reason)
 	}
 }
 
@@ -136,8 +136,8 @@ func TestNewMuxRoutesSMSSend(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if resp.Reason != "invalid_json" {
-		t.Fatalf("expected invalid_json, got %q", resp.Reason)
+	if resp.Reason != "invalid_request" {
+		t.Fatalf("expected invalid_request, got %q", resp.Reason)
 	}
 }
 
@@ -147,7 +147,7 @@ func TestWriteSMSResponse(t *testing.T) {
 	writeSMSResponse(rec, http.StatusBadRequest, gateway.SMSResponse{
 		ReferenceID: "ref-1",
 		Status:      "rejected",
-		Reason:      "invalid_json",
+		Reason:      "invalid_request",
 	})
 
 	if rec.Code != http.StatusBadRequest {
@@ -164,7 +164,7 @@ func TestWriteSMSResponse(t *testing.T) {
 	if resp.ReferenceID != "ref-1" {
 		t.Fatalf("expected referenceId ref-1, got %q", resp.ReferenceID)
 	}
-	if resp.Reason != "invalid_json" {
-		t.Fatalf("expected invalid_json, got %q", resp.Reason)
+	if resp.Reason != "invalid_request" {
+		t.Fatalf("expected invalid_request, got %q", resp.Reason)
 	}
 }

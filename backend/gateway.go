@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"strings"
+	"sync"
 )
 
 var ErrInvalidRequest = errors.New("invalid request")
@@ -30,63 +31,136 @@ type SMSResponse struct {
 	Reason           string `json:"reason,omitempty"`
 }
 
-// Config defines Gateway configuration.
+// Config defines SMS gateway configuration.
 type Config struct {
 	Provider string
 }
 
-// Gateway is the core SMS gateway service.
-type Gateway struct{}
+// SMSGateway is the core SMS gateway service.
+type SMSGateway struct {
+	mu   sync.Mutex
+	seen map[string]struct{}
+}
 
-// New constructs a Gateway instance.
-func New(cfg Config) (*Gateway, error) {
+// New constructs an SMSGateway instance.
+func New(cfg Config) (*SMSGateway, error) {
 	if cfg.Provider == "" {
 		return nil, errMissingProvider
 	}
 	if !strings.EqualFold(cfg.Provider, provider24x7) {
 		return nil, errUnknownProvider
 	}
-	return &Gateway{}, nil
+	return &SMSGateway{
+		seen: make(map[string]struct{}),
+	}, nil
 }
 
 // SendSMS submits an SMS request to the configured provider.
-func (g *Gateway) SendSMS(ctx context.Context, req SMSRequest) (SMSResponse, error) {
+func (g *SMSGateway) SendSMS(ctx context.Context, req SMSRequest) (SMSResponse, error) {
 	if req.ReferenceID == "" {
+		status := "rejected"
+		reason := "invalid_request"
 		return SMSResponse{
-			Status: "rejected",
-			Reason: "missing_reference_id",
+			ReferenceID: req.ReferenceID,
+			Status:      status,
+			Reason:      reason,
 		}, ErrInvalidRequest
 	}
 	if req.To == "" {
+		status := "rejected"
+		reason := "invalid_request"
 		return SMSResponse{
 			ReferenceID: req.ReferenceID,
-			Status:      "rejected",
-			Reason:      "missing_to",
+			Status:      status,
+			Reason:      reason,
 		}, ErrInvalidRequest
 	}
 	if req.Message == "" {
+		status := "rejected"
+		reason := "invalid_request"
 		return SMSResponse{
 			ReferenceID: req.ReferenceID,
-			Status:      "rejected",
-			Reason:      "missing_message",
+			Status:      status,
+			Reason:      reason,
+		}, ErrInvalidRequest
+	}
+
+	g.mu.Lock()
+	if _, ok := g.seen[req.ReferenceID]; ok {
+		g.mu.Unlock()
+		status := "rejected"
+		reason := "duplicate_reference"
+		return SMSResponse{
+			ReferenceID: req.ReferenceID,
+			Status:      status,
+			Reason:      reason,
+		}, ErrInvalidRequest
+	}
+	// referenceId is consumed on first sight to keep idempotency strict.
+	// Invalid or failed attempts also consume the id in Phase 3.
+	g.seen[req.ReferenceID] = struct{}{}
+	g.mu.Unlock()
+
+	hasDigit := false
+	for _, r := range req.To {
+		switch {
+		case r >= '0' && r <= '9':
+			hasDigit = true
+		case r == ' ' || r == '+' || r == '-' || r == '(' || r == ')':
+		default:
+			status := "rejected"
+			reason := "invalid_recipient"
+			return SMSResponse{
+				ReferenceID: req.ReferenceID,
+				Status:      status,
+				Reason:      reason,
+			}, ErrInvalidRequest
+		}
+	}
+	if !hasDigit {
+		status := "rejected"
+		reason := "invalid_recipient"
+		return SMSResponse{
+			ReferenceID: req.ReferenceID,
+			Status:      status,
+			Reason:      reason,
+		}, ErrInvalidRequest
+	}
+
+	if strings.TrimSpace(req.Message) == "" {
+		status := "rejected"
+		reason := "invalid_message"
+		return SMSResponse{
+			ReferenceID: req.ReferenceID,
+			Status:      status,
+			Reason:      reason,
 		}, ErrInvalidRequest
 	}
 
 	if ctx.Err() != nil {
+		status := "rejected"
+		reason := "provider_failure"
 		return SMSResponse{
 			ReferenceID: req.ReferenceID,
-			Status:      "rejected",
-			Reason:      "gateway_unavailable",
+			Status:      status,
+			Reason:      reason,
 		}, nil
 	}
 
 	messageID, err := newMessageID()
 	if err != nil {
-		return SMSResponse{}, err
+		status := "rejected"
+		reason := "provider_failure"
+		return SMSResponse{
+			ReferenceID: req.ReferenceID,
+			Status:      status,
+			Reason:      reason,
+		}, nil
 	}
+	status := "accepted"
 	return SMSResponse{
 		ReferenceID:      req.ReferenceID,
-		Status:           "accepted",
+		Status:           status,
 		GatewayMessageID: messageID,
 	}, nil
 }

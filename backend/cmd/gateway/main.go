@@ -67,13 +67,13 @@ func main() {
 	}
 }
 
-func newMux(gw *gateway.Gateway) *http.ServeMux {
+func newMux(gw *gateway.SMSGateway) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/sms/send", handleSMSSend(gw))
 	return mux
 }
 
-func handleSMSSend(gw *gateway.Gateway) http.HandlerFunc {
+func handleSMSSend(gw *gateway.SMSGateway) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 
@@ -82,31 +82,22 @@ func handleSMSSend(gw *gateway.Gateway) http.HandlerFunc {
 		if err := dec.Decode(&req); err != nil {
 			writeSMSResponse(w, http.StatusBadRequest, gateway.SMSResponse{
 				Status: "rejected",
-				Reason: "invalid_json",
+				Reason: "invalid_request",
 			})
 			return
 		}
 		if err := dec.Decode(&struct{}{}); err != io.EOF {
 			writeSMSResponse(w, http.StatusBadRequest, gateway.SMSResponse{
 				Status: "rejected",
-				Reason: "invalid_json",
+				Reason: "invalid_request",
 			})
 			return
 		}
 
 		resp, err := gw.SendSMS(r.Context(), req)
 		status := http.StatusOK
-		if err != nil {
-			if errors.Is(err, gateway.ErrInvalidRequest) {
-				status = http.StatusBadRequest
-			} else {
-				status = http.StatusInternalServerError
-				resp = gateway.SMSResponse{
-					ReferenceID: req.ReferenceID,
-					Status:      "rejected",
-					Reason:      "internal_error",
-				}
-			}
+		if err != nil && errors.Is(err, gateway.ErrInvalidRequest) {
+			status = http.StatusBadRequest
 		}
 		writeSMSResponse(w, status, resp)
 	}
