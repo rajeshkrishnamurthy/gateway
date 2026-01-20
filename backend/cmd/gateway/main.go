@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"gateway"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -76,17 +77,45 @@ func handleSMSSend(gw *gateway.Gateway) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 
+		dec := json.NewDecoder(r.Body)
 		var req gateway.SMSRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
+		if err := dec.Decode(&req); err != nil {
+			writeSMSResponse(w, http.StatusBadRequest, gateway.SMSResponse{
+				Status: "rejected",
+				Reason: "invalid_json",
+			})
+			return
+		}
+		if err := dec.Decode(&struct{}{}); err != io.EOF {
+			writeSMSResponse(w, http.StatusBadRequest, gateway.SMSResponse{
+				Status: "rejected",
+				Reason: "invalid_json",
+			})
 			return
 		}
 
-		_, err := gw.SendSMS(r.Context(), req)
+		resp, err := gw.SendSMS(r.Context(), req)
+		status := http.StatusOK
 		if err != nil {
-			w.WriteHeader(http.StatusNotImplemented)
-			return
+			if errors.Is(err, gateway.ErrInvalidRequest) {
+				status = http.StatusBadRequest
+			} else {
+				status = http.StatusInternalServerError
+				resp = gateway.SMSResponse{
+					ReferenceID: req.ReferenceID,
+					Status:      "rejected",
+					Reason:      "internal_error",
+				}
+			}
 		}
-		w.WriteHeader(http.StatusOK)
+		writeSMSResponse(w, status, resp)
+	}
+}
+
+func writeSMSResponse(w http.ResponseWriter, status int, resp gateway.SMSResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("encode response: %v", err)
 	}
 }
