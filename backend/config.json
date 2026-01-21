@@ -1,0 +1,5 @@
+{
+  "addr": ":8080",
+  "smsProviderUrl": "http://localhost:9090/sms/send",
+  "smsProviderTimeoutSeconds": 30
+}

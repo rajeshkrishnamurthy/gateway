@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
+
+const defaultProviderTimeout = 30 * time.Second
 
 func TestNewMissingProvider(t *testing.T) {
 	_, err := New(Config{})
@@ -13,10 +16,37 @@ func TestNewMissingProvider(t *testing.T) {
 	}
 }
 
+func TestNewInvalidProviderTimeoutLow(t *testing.T) {
+	_, err := New(Config{
+		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+			return ProviderResult{Status: "accepted"}, nil
+		},
+		ProviderTimeout: 10 * time.Second,
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid provider timeout")
+	}
+}
+
+func TestNewInvalidProviderTimeoutHigh(t *testing.T) {
+	_, err := New(Config{
+		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+			return ProviderResult{Status: "accepted"}, nil
+		},
+		ProviderTimeout: 61 * time.Second,
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid provider timeout")
+	}
+}
+
 func TestSendSMSMissingReferenceID(t *testing.T) {
-	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
-		return ProviderResult{Status: "accepted"}, nil
-	}})
+	gw, err := New(Config{
+		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+			return ProviderResult{Status: "accepted"}, nil
+		},
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -37,9 +67,12 @@ func TestSendSMSMissingReferenceID(t *testing.T) {
 }
 
 func TestSendSMSMissingTo(t *testing.T) {
-	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
-		return ProviderResult{Status: "accepted"}, nil
-	}})
+	gw, err := New(Config{
+		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+			return ProviderResult{Status: "accepted"}, nil
+		},
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -60,9 +93,12 @@ func TestSendSMSMissingTo(t *testing.T) {
 }
 
 func TestSendSMSMissingMessage(t *testing.T) {
-	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
-		return ProviderResult{Status: "accepted"}, nil
-	}})
+	gw, err := New(Config{
+		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+			return ProviderResult{Status: "accepted"}, nil
+		},
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -83,9 +119,12 @@ func TestSendSMSMissingMessage(t *testing.T) {
 }
 
 func TestSendSMSInvalidRecipient(t *testing.T) {
-	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
-		return ProviderResult{Status: "rejected", Reason: "invalid_recipient"}, nil
-	}})
+	gw, err := New(Config{
+		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+			return ProviderResult{Status: "rejected", Reason: "invalid_recipient"}, nil
+		},
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -107,9 +146,12 @@ func TestSendSMSInvalidRecipient(t *testing.T) {
 }
 
 func TestSendSMSInvalidMessage(t *testing.T) {
-	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
-		return ProviderResult{Status: "rejected", Reason: "invalid_message"}, nil
-	}})
+	gw, err := New(Config{
+		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+			return ProviderResult{Status: "rejected", Reason: "invalid_message"}, nil
+		},
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -131,9 +173,12 @@ func TestSendSMSInvalidMessage(t *testing.T) {
 }
 
 func TestSendSMSProviderFailureResult(t *testing.T) {
-	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
-		return ProviderResult{Status: "rejected", Reason: "provider_failure"}, nil
-	}})
+	gw, err := New(Config{
+		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+			return ProviderResult{Status: "rejected", Reason: "provider_failure"}, nil
+		},
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -155,9 +200,12 @@ func TestSendSMSProviderFailureResult(t *testing.T) {
 }
 
 func TestSendSMSDuplicateReference(t *testing.T) {
-	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
-		return ProviderResult{Status: "accepted"}, nil
-	}})
+	gw, err := New(Config{
+		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+			return ProviderResult{Status: "accepted"}, nil
+		},
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -188,9 +236,12 @@ func TestSendSMSDuplicateReference(t *testing.T) {
 }
 
 func TestSendSMSValidRequestAccepted(t *testing.T) {
-	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
-		return ProviderResult{Status: "accepted"}, nil
-	}})
+	gw, err := New(Config{
+		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+			return ProviderResult{Status: "accepted"}, nil
+		},
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -218,9 +269,12 @@ func TestSendSMSValidRequestAccepted(t *testing.T) {
 }
 
 func TestSendSMSContextCanceled(t *testing.T) {
-	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
-		return ProviderResult{}, ctx.Err()
-	}})
+	gw, err := New(Config{
+		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+			return ProviderResult{}, ctx.Err()
+		},
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -244,5 +298,38 @@ func TestSendSMSContextCanceled(t *testing.T) {
 	}
 	if resp.Reason != "provider_failure" {
 		t.Fatalf("expected provider_failure, got %q", resp.Reason)
+	}
+}
+
+func TestSendSMSProviderTimeoutApplied(t *testing.T) {
+	var remaining time.Duration
+	gw, err := New(Config{
+		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+			deadline, ok := ctx.Deadline()
+			if !ok {
+				t.Fatal("expected provider deadline")
+			}
+			remaining = time.Until(deadline)
+			return ProviderResult{Status: "accepted"}, nil
+		},
+		ProviderTimeout: 15 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new gateway: %v", err)
+	}
+
+	_, err = gw.SendSMS(context.Background(), SMSRequest{
+		ReferenceID: "ref-timeout-1",
+		To:          "15551234567",
+		Message:     "hello",
+	})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if remaining <= 0 {
+		t.Fatalf("expected positive deadline remaining, got %v", remaining)
+	}
+	if remaining > 15*time.Second {
+		t.Fatalf("expected deadline <= 15s, got %v", remaining)
 	}
 }

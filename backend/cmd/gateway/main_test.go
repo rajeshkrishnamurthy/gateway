@@ -8,12 +8,18 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
+const defaultProviderTimeout = 30 * time.Second
+
 func TestSMSSendInvalidJSON(t *testing.T) {
-	gw, err := gateway.New(gateway.Config{Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
-		return gateway.ProviderResult{Status: "accepted"}, nil
-	}})
+	gw, err := gateway.New(gateway.Config{
+		Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+			return gateway.ProviderResult{Status: "accepted"}, nil
+		},
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -40,9 +46,12 @@ func TestSMSSendInvalidJSON(t *testing.T) {
 }
 
 func TestSMSSendTrailingJSON(t *testing.T) {
-	gw, err := gateway.New(gateway.Config{Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
-		return gateway.ProviderResult{Status: "accepted"}, nil
-	}})
+	gw, err := gateway.New(gateway.Config{
+		Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+			return gateway.ProviderResult{Status: "accepted"}, nil
+		},
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -67,9 +76,12 @@ func TestSMSSendTrailingJSON(t *testing.T) {
 }
 
 func TestSMSSendMissingReferenceID(t *testing.T) {
-	gw, err := gateway.New(gateway.Config{Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
-		return gateway.ProviderResult{Status: "accepted"}, nil
-	}})
+	gw, err := gateway.New(gateway.Config{
+		Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+			return gateway.ProviderResult{Status: "accepted"}, nil
+		},
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -94,9 +106,12 @@ func TestSMSSendMissingReferenceID(t *testing.T) {
 }
 
 func TestSMSSendValidRequestAccepted(t *testing.T) {
-	gw, err := gateway.New(gateway.Config{Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
-		return gateway.ProviderResult{Status: "accepted"}, nil
-	}})
+	gw, err := gateway.New(gateway.Config{
+		Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+			return gateway.ProviderResult{Status: "accepted"}, nil
+		},
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -127,9 +142,12 @@ func TestSMSSendValidRequestAccepted(t *testing.T) {
 }
 
 func TestNewMuxRoutesSMSSend(t *testing.T) {
-	gw, err := gateway.New(gateway.Config{Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
-		return gateway.ProviderResult{Status: "accepted"}, nil
-	}})
+	gw, err := gateway.New(gateway.Config{
+		Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+			return gateway.ProviderResult{Status: "accepted"}, nil
+		},
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -196,7 +214,10 @@ func TestSMSSendProviderInvalidMessage(t *testing.T) {
 	}))
 	defer provider.Close()
 
-	gw, err := gateway.New(gateway.Config{Provider: newProviderClient(provider.URL + "/sms/send")})
+	gw, err := gateway.New(gateway.Config{
+		Provider:        newProviderClient(provider.URL + "/sms/send"),
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -236,7 +257,10 @@ func TestSMSSendProviderFailureStatus(t *testing.T) {
 	}))
 	defer provider.Close()
 
-	gw, err := gateway.New(gateway.Config{Provider: newProviderClient(provider.URL + "/sms/send")})
+	gw, err := gateway.New(gateway.Config{
+		Provider:        newProviderClient(provider.URL + "/sms/send"),
+		ProviderTimeout: defaultProviderTimeout,
+	})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}

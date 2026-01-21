@@ -6,10 +6,17 @@ import (
 	"encoding/hex"
 	"errors"
 	"sync"
+	"time"
 )
 
 var ErrInvalidRequest = errors.New("invalid request")
 var errMissingProvider = errors.New("provider is required")
+var errInvalidProviderTimeout = errors.New("provider timeout must be between 15s and 60s")
+
+const (
+	minProviderTimeout = 15 * time.Second
+	maxProviderTimeout = 60 * time.Second
+)
 
 // SMSRequest is the domain input for submitting an SMS send request.
 type SMSRequest struct {
@@ -29,7 +36,8 @@ type SMSResponse struct {
 
 // Config defines SMS gateway configuration.
 type Config struct {
-	Provider ProviderCall
+	Provider        ProviderCall
+	ProviderTimeout time.Duration
 }
 
 // ProviderCall invokes the configured SMS provider.
@@ -43,9 +51,10 @@ type ProviderResult struct {
 
 // SMSGateway is the core SMS gateway service.
 type SMSGateway struct {
-	mu       sync.Mutex
-	seen     map[string]struct{}
-	provider ProviderCall
+	mu              sync.Mutex
+	seen            map[string]struct{}
+	provider        ProviderCall
+	providerTimeout time.Duration
 }
 
 // New constructs an SMSGateway instance.
@@ -53,9 +62,13 @@ func New(cfg Config) (*SMSGateway, error) {
 	if cfg.Provider == nil {
 		return nil, errMissingProvider
 	}
+	if cfg.ProviderTimeout < minProviderTimeout || cfg.ProviderTimeout > maxProviderTimeout {
+		return nil, errInvalidProviderTimeout
+	}
 	return &SMSGateway{
-		seen:     make(map[string]struct{}),
-		provider: cfg.Provider,
+		seen:            make(map[string]struct{}),
+		provider:        cfg.Provider,
+		providerTimeout: cfg.ProviderTimeout,
 	}, nil
 }
 
@@ -105,7 +118,10 @@ func (g *SMSGateway) SendSMS(ctx context.Context, req SMSRequest) (SMSResponse, 
 	g.seen[req.ReferenceID] = struct{}{}
 	g.mu.Unlock()
 
-	providerResult, err := g.provider(ctx, req)
+	providerCtx, cancel := context.WithTimeout(ctx, g.providerTimeout)
+	defer cancel()
+
+	providerResult, err := g.provider(providerCtx, req)
 	if err != nil {
 		status := "rejected"
 		reason := "provider_failure"

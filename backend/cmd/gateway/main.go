@@ -12,25 +12,52 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
 
 const maxBodyBytes = 16 << 10
 
-var addr = flag.String("addr", ":8080", "HTTP listen address")
-var smsProviderURL = flag.String("sms-provider-url", "", "SMS provider URL")
+var configPath = flag.String("config", "config.json", "Gateway config file path")
+var showHelp = flag.Bool("help", false, "show usage")
+var showVersion = flag.Bool("version", false, "show version")
+
+const version = "0.1.0"
+
+type fileConfig struct {
+	Addr                      string `json:"addr"`
+	SMSProviderURL            string `json:"smsProviderUrl"`
+	SMSProviderTimeoutSeconds int    `json:"smsProviderTimeoutSeconds"`
+}
 
 func main() {
 	flag.Parse()
+	if *showHelp {
+		flag.Usage()
+		return
+	}
+	if *showVersion {
+		log.Printf("gateway version %s", version)
+		return
+	}
 
-	gw, err := gateway.New(gateway.Config{Provider: newProviderClient(*smsProviderURL)})
+	cfg, err := loadConfig(*configPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	providerTimeout := time.Duration(cfg.SMSProviderTimeoutSeconds) * time.Second
+	gw, err := gateway.New(gateway.Config{
+		Provider:        newProviderClient(cfg.SMSProviderURL),
+		ProviderTimeout: providerTimeout,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	server := &http.Server{
-		Addr:    *addr,
+		Addr:    cfg.Addr,
 		Handler: newMux(gw),
 	}
 
@@ -42,7 +69,13 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
-	log.Printf("listening on %s", *addr)
+	log.Printf(
+		"listening on %s configPath=%q smsProviderUrl=%q smsProviderTimeoutSeconds=%d",
+		cfg.Addr,
+		*configPath,
+		cfg.SMSProviderURL,
+		cfg.SMSProviderTimeoutSeconds,
+	)
 
 	select {
 	case err := <-errCh:
@@ -68,6 +101,36 @@ func main() {
 	}
 }
 
+func loadConfig(path string) (fileConfig, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return fileConfig{}, err
+	}
+	defer file.Close()
+
+	dec := json.NewDecoder(file)
+	dec.DisallowUnknownFields()
+	var cfg fileConfig
+	if err := dec.Decode(&cfg); err != nil {
+		return fileConfig{}, err
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		return fileConfig{}, errors.New("config has trailing data")
+	}
+
+	if strings.TrimSpace(cfg.Addr) == "" {
+		return fileConfig{}, errors.New("addr is required")
+	}
+	if strings.TrimSpace(cfg.SMSProviderURL) == "" {
+		return fileConfig{}, errors.New("smsProviderUrl is required")
+	}
+	if cfg.SMSProviderTimeoutSeconds < 15 || cfg.SMSProviderTimeoutSeconds > 60 {
+		return fileConfig{}, errors.New("smsProviderTimeoutSeconds must be between 15 and 60")
+	}
+
+	return cfg, nil
+}
+
 func newMux(gw *gateway.SMSGateway) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/sms/send", handleSMSSend(gw))
@@ -81,6 +144,7 @@ func handleSMSSend(gw *gateway.SMSGateway) http.HandlerFunc {
 		dec := json.NewDecoder(r.Body)
 		var req gateway.SMSRequest
 		if err := dec.Decode(&req); err != nil {
+			log.Printf("sms decision referenceId=%q status=rejected reason=invalid_request source=validation detail=decode_error err=%v", "", err)
 			writeSMSResponse(w, http.StatusBadRequest, gateway.SMSResponse{
 				Status: "rejected",
 				Reason: "invalid_request",
@@ -88,6 +152,7 @@ func handleSMSSend(gw *gateway.SMSGateway) http.HandlerFunc {
 			return
 		}
 		if err := dec.Decode(&struct{}{}); err != io.EOF {
+			log.Printf("sms decision referenceId=%q status=rejected reason=invalid_request source=validation detail=trailing_json", req.ReferenceID)
 			writeSMSResponse(w, http.StatusBadRequest, gateway.SMSResponse{
 				Status: "rejected",
 				Reason: "invalid_request",
@@ -100,6 +165,25 @@ func handleSMSSend(gw *gateway.SMSGateway) http.HandlerFunc {
 		if err != nil && errors.Is(err, gateway.ErrInvalidRequest) {
 			status = http.StatusBadRequest
 		}
+		source := "provider_result"
+		if err != nil && errors.Is(err, gateway.ErrInvalidRequest) {
+			switch resp.Reason {
+			case "invalid_recipient", "invalid_message":
+				source = "provider_result"
+			default:
+				source = "validation"
+			}
+		} else if resp.Reason == "provider_failure" {
+			source = "provider_failure"
+		}
+		log.Printf(
+			"sms decision referenceId=%q status=%q reason=%q source=%s gatewayMessageId=%q",
+			resp.ReferenceID,
+			resp.Status,
+			resp.Reason,
+			source,
+			resp.GatewayMessageID,
+		)
 		writeSMSResponse(w, status, resp)
 	}
 }
@@ -139,37 +223,58 @@ func newProviderClient(url string) gateway.ProviderCall {
 		}
 		body, err := json.Marshal(payload)
 		if err != nil {
+			log.Printf("sms provider error referenceId=%q error=%v", req.ReferenceID, err)
 			return gateway.ProviderResult{}, err
 		}
 
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 		if err != nil {
+			log.Printf("sms provider error referenceId=%q error=%v", req.ReferenceID, err)
 			return gateway.ProviderResult{}, err
 		}
 		httpReq.Header.Set("Content-Type", "application/json")
 
+		log.Printf(
+			"sms provider request referenceId=%q url=%q to=%q message=%q tenantId=%q",
+			req.ReferenceID,
+			url,
+			req.To,
+			req.Message,
+			req.TenantID,
+		)
 		resp, err := client.Do(httpReq)
 		if err != nil {
+			log.Printf("sms provider error referenceId=%q error=%v", req.ReferenceID, err)
 			return gateway.ProviderResult{}, err
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
+			log.Printf("sms provider error referenceId=%q status=%d", req.ReferenceID, resp.StatusCode)
 			return gateway.ProviderResult{}, errors.New("provider non-200 response")
 		}
 
 		dec := json.NewDecoder(resp.Body)
 		var providerResp providerResponse
 		if err := dec.Decode(&providerResp); err != nil {
+			log.Printf("sms provider error referenceId=%q error=%v", req.ReferenceID, err)
 			return gateway.ProviderResult{}, err
 		}
 		if err := dec.Decode(&struct{}{}); err != io.EOF {
+			log.Printf("sms provider error referenceId=%q error=%v", req.ReferenceID, err)
 			return gateway.ProviderResult{}, errors.New("provider response has trailing data")
 		}
 		if providerResp.Status == "" {
+			log.Printf("sms provider error referenceId=%q error=%v", req.ReferenceID, "provider status missing")
 			return gateway.ProviderResult{}, errors.New("provider status missing")
 		}
 
+		log.Printf(
+			"sms provider response referenceId=%q status=%q reason=%q",
+			req.ReferenceID,
+			providerResp.Status,
+			providerResp.Reason,
+		)
 		return gateway.ProviderResult{
 			Status: providerResp.Status,
 			Reason: providerResp.Reason,
