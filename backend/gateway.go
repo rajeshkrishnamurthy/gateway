@@ -11,7 +11,7 @@ import (
 )
 
 var ErrInvalidRequest = errors.New("invalid request")
-var errMissingProvider = errors.New("provider is required")
+var errMissingProviderCall = errors.New("provider call is required")
 var errInvalidProviderTimeout = errors.New("provider timeout must be between 15s and 60s")
 
 const (
@@ -37,7 +37,7 @@ type SMSResponse struct {
 
 // Config defines SMS gateway configuration.
 type Config struct {
-	Provider        ProviderCall
+	ProviderCall    ProviderCall
 	ProviderTimeout time.Duration
 }
 
@@ -54,21 +54,21 @@ type ProviderResult struct {
 type SMSGateway struct {
 	mu              sync.Mutex
 	inflight        map[string]struct{}
-	provider        ProviderCall
+	providerCall    ProviderCall
 	providerTimeout time.Duration
 }
 
 // New constructs an SMSGateway instance.
 func New(cfg Config) (*SMSGateway, error) {
-	if cfg.Provider == nil {
-		return nil, errMissingProvider
+	if cfg.ProviderCall == nil {
+		return nil, errMissingProviderCall
 	}
 	if cfg.ProviderTimeout < minProviderTimeout || cfg.ProviderTimeout > maxProviderTimeout {
 		return nil, errInvalidProviderTimeout
 	}
 	return &SMSGateway{
 		inflight:        make(map[string]struct{}),
-		provider:        cfg.Provider,
+		providerCall:    cfg.ProviderCall,
 		providerTimeout: cfg.ProviderTimeout,
 	}, nil
 }
@@ -133,7 +133,7 @@ func (g *SMSGateway) SendSMS(ctx context.Context, req SMSRequest) (SMSResponse, 
 				err = errors.New("provider panic")
 			}
 		}()
-		return g.provider(providerCtx, req)
+		return g.providerCall(providerCtx, req)
 	}()
 	if err != nil {
 		status := "rejected"

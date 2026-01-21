@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"gateway"
+	"gateway/adapter"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,9 +15,21 @@ import (
 const defaultProviderTimeout = 30 * time.Second
 const defaultProviderConnectTimeout = minProviderConnectTimeout
 
+type providerRequest struct {
+	ReferenceID string `json:"referenceId"`
+	To          string `json:"to"`
+	Message     string `json:"message"`
+	TenantID    string `json:"tenantId,omitempty"`
+}
+
+type providerResponse struct {
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
+}
+
 func TestSMSSendInvalidJSON(t *testing.T) {
 	gw, err := gateway.New(gateway.Config{
-		Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
 			return gateway.ProviderResult{Status: "accepted"}, nil
 		},
 		ProviderTimeout: defaultProviderTimeout,
@@ -48,7 +61,7 @@ func TestSMSSendInvalidJSON(t *testing.T) {
 
 func TestSMSSendTrailingJSON(t *testing.T) {
 	gw, err := gateway.New(gateway.Config{
-		Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
 			return gateway.ProviderResult{Status: "accepted"}, nil
 		},
 		ProviderTimeout: defaultProviderTimeout,
@@ -78,7 +91,7 @@ func TestSMSSendTrailingJSON(t *testing.T) {
 
 func TestSMSSendMissingReferenceID(t *testing.T) {
 	gw, err := gateway.New(gateway.Config{
-		Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
 			return gateway.ProviderResult{Status: "accepted"}, nil
 		},
 		ProviderTimeout: defaultProviderTimeout,
@@ -108,7 +121,7 @@ func TestSMSSendMissingReferenceID(t *testing.T) {
 
 func TestSMSSendValidRequestAccepted(t *testing.T) {
 	gw, err := gateway.New(gateway.Config{
-		Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
 			return gateway.ProviderResult{Status: "accepted"}, nil
 		},
 		ProviderTimeout: defaultProviderTimeout,
@@ -144,7 +157,7 @@ func TestSMSSendValidRequestAccepted(t *testing.T) {
 
 func TestNewMuxRoutesSMSSend(t *testing.T) {
 	gw, err := gateway.New(gateway.Config{
-		Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
 			return gateway.ProviderResult{Status: "accepted"}, nil
 		},
 		ProviderTimeout: defaultProviderTimeout,
@@ -216,7 +229,7 @@ func TestSMSSendProviderInvalidMessage(t *testing.T) {
 	defer provider.Close()
 
 	gw, err := gateway.New(gateway.Config{
-		Provider:        newProviderClient(provider.URL+"/sms/send", defaultProviderConnectTimeout),
+		ProviderCall:    adapter.DefaultProviderCall(provider.URL+"/sms/send", defaultProviderConnectTimeout),
 		ProviderTimeout: defaultProviderTimeout,
 	})
 	if err != nil {
@@ -259,7 +272,7 @@ func TestSMSSendProviderFailureStatus(t *testing.T) {
 	defer provider.Close()
 
 	gw, err := gateway.New(gateway.Config{
-		Provider:        newProviderClient(provider.URL+"/sms/send", defaultProviderConnectTimeout),
+		ProviderCall:    adapter.DefaultProviderCall(provider.URL+"/sms/send", defaultProviderConnectTimeout),
 		ProviderTimeout: defaultProviderTimeout,
 	})
 	if err != nil {

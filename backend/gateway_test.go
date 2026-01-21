@@ -18,7 +18,7 @@ func TestNewMissingProvider(t *testing.T) {
 
 func TestNewInvalidProviderTimeoutLow(t *testing.T) {
 	_, err := New(Config{
-		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
 			return ProviderResult{Status: "accepted"}, nil
 		},
 		ProviderTimeout: 10 * time.Second,
@@ -30,7 +30,7 @@ func TestNewInvalidProviderTimeoutLow(t *testing.T) {
 
 func TestNewInvalidProviderTimeoutHigh(t *testing.T) {
 	_, err := New(Config{
-		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
 			return ProviderResult{Status: "accepted"}, nil
 		},
 		ProviderTimeout: 61 * time.Second,
@@ -42,7 +42,7 @@ func TestNewInvalidProviderTimeoutHigh(t *testing.T) {
 
 func TestSendSMSMissingReferenceID(t *testing.T) {
 	gw, err := New(Config{
-		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
 			return ProviderResult{Status: "accepted"}, nil
 		},
 		ProviderTimeout: defaultProviderTimeout,
@@ -68,7 +68,7 @@ func TestSendSMSMissingReferenceID(t *testing.T) {
 
 func TestSendSMSMissingTo(t *testing.T) {
 	gw, err := New(Config{
-		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
 			return ProviderResult{Status: "accepted"}, nil
 		},
 		ProviderTimeout: defaultProviderTimeout,
@@ -94,7 +94,7 @@ func TestSendSMSMissingTo(t *testing.T) {
 
 func TestSendSMSMissingMessage(t *testing.T) {
 	gw, err := New(Config{
-		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
 			return ProviderResult{Status: "accepted"}, nil
 		},
 		ProviderTimeout: defaultProviderTimeout,
@@ -120,7 +120,7 @@ func TestSendSMSMissingMessage(t *testing.T) {
 
 func TestSendSMSInvalidRecipient(t *testing.T) {
 	gw, err := New(Config{
-		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
 			return ProviderResult{Status: "rejected", Reason: "invalid_recipient"}, nil
 		},
 		ProviderTimeout: defaultProviderTimeout,
@@ -147,7 +147,7 @@ func TestSendSMSInvalidRecipient(t *testing.T) {
 
 func TestSendSMSInvalidMessage(t *testing.T) {
 	gw, err := New(Config{
-		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
 			return ProviderResult{Status: "rejected", Reason: "invalid_message"}, nil
 		},
 		ProviderTimeout: defaultProviderTimeout,
@@ -174,7 +174,7 @@ func TestSendSMSInvalidMessage(t *testing.T) {
 
 func TestSendSMSProviderFailureResult(t *testing.T) {
 	gw, err := New(Config{
-		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
 			return ProviderResult{Status: "rejected", Reason: "provider_failure"}, nil
 		},
 		ProviderTimeout: defaultProviderTimeout,
@@ -201,7 +201,7 @@ func TestSendSMSProviderFailureResult(t *testing.T) {
 
 func TestSendSMSProviderPanic(t *testing.T) {
 	gw, err := New(Config{
-		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
 			panic("boom")
 		},
 		ProviderTimeout: defaultProviderTimeout,
@@ -233,7 +233,7 @@ func TestSendSMSDuplicateReferenceInFlight(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	gw, err := New(Config{
-		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
 			close(started)
 			<-release
 			return ProviderResult{Status: "accepted"}, nil
@@ -283,7 +283,7 @@ func TestSendSMSDuplicateReferenceInFlight(t *testing.T) {
 
 func TestSendSMSValidRequestAccepted(t *testing.T) {
 	gw, err := New(Config{
-		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
 			return ProviderResult{Status: "accepted"}, nil
 		},
 		ProviderTimeout: defaultProviderTimeout,
@@ -316,7 +316,7 @@ func TestSendSMSValidRequestAccepted(t *testing.T) {
 
 func TestSendSMSContextCanceled(t *testing.T) {
 	gw, err := New(Config{
-		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
 			return ProviderResult{}, ctx.Err()
 		},
 		ProviderTimeout: defaultProviderTimeout,
@@ -350,7 +350,7 @@ func TestSendSMSContextCanceled(t *testing.T) {
 func TestSendSMSProviderTimeoutApplied(t *testing.T) {
 	var remaining time.Duration
 	gw, err := New(Config{
-		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		ProviderCall: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
 			deadline, ok := ctx.Deadline()
 			if !ok {
 				t.Fatal("expected provider deadline")

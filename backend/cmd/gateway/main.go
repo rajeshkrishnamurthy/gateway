@@ -1,15 +1,14 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"gateway"
+	"gateway/adapter"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -32,6 +31,7 @@ const (
 )
 
 type fileConfig struct {
+	SMSProvider                      string `json:"smsProvider"`
 	Addr                             string `json:"addr"`
 	SMSProviderURL                   string `json:"smsProviderUrl"`
 	SMSProviderTimeoutSeconds        int    `json:"smsProviderTimeoutSeconds"`
@@ -56,8 +56,17 @@ func main() {
 
 	providerTimeout := time.Duration(cfg.SMSProviderTimeoutSeconds) * time.Second
 	providerConnectTimeout := time.Duration(cfg.SMSProviderConnectTimeoutSeconds) * time.Second
+	var providerCall gateway.ProviderCall
+	switch cfg.SMSProvider {
+	case "default":
+		providerCall = adapter.DefaultProviderCall(cfg.SMSProviderURL, providerConnectTimeout)
+	case "model":
+		providerCall = adapter.ModelProviderCall(cfg.SMSProviderURL, providerConnectTimeout)
+	default:
+		log.Fatalf("smsProvider must be one of: default, model")
+	}
 	gw, err := gateway.New(gateway.Config{
-		Provider:        newProviderClient(cfg.SMSProviderURL, providerConnectTimeout),
+		ProviderCall:    providerCall,
 		ProviderTimeout: providerTimeout,
 	})
 	if err != nil {
@@ -78,9 +87,10 @@ func main() {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
 	log.Printf(
-		"listening on %s configPath=%q smsProviderUrl=%q smsProviderTimeoutSeconds=%d smsProviderConnectTimeoutSeconds=%d",
+		"listening on %s configPath=%q smsProvider=%q smsProviderUrl=%q smsProviderTimeoutSeconds=%d smsProviderConnectTimeoutSeconds=%d",
 		cfg.Addr,
 		*configPath,
+		cfg.SMSProvider,
 		cfg.SMSProviderURL,
 		cfg.SMSProviderTimeoutSeconds,
 		cfg.SMSProviderConnectTimeoutSeconds,
@@ -129,6 +139,15 @@ func loadConfig(path string) (fileConfig, error) {
 
 	if strings.TrimSpace(cfg.Addr) == "" {
 		return fileConfig{}, errors.New("addr is required")
+	}
+	cfg.SMSProvider = strings.TrimSpace(cfg.SMSProvider)
+	if cfg.SMSProvider == "" {
+		cfg.SMSProvider = "default"
+	}
+	switch cfg.SMSProvider {
+	case "default", "model":
+	default:
+		return fileConfig{}, errors.New("smsProvider must be one of: default, model")
 	}
 	if strings.TrimSpace(cfg.SMSProviderURL) == "" {
 		return fileConfig{}, errors.New("smsProviderUrl is required")
@@ -209,99 +228,5 @@ func writeSMSResponse(w http.ResponseWriter, status int, resp gateway.SMSRespons
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		log.Printf("encode response: %v", err)
-	}
-}
-
-type providerRequest struct {
-	ReferenceID string `json:"referenceId"`
-	To          string `json:"to"`
-	Message     string `json:"message"`
-	TenantID    string `json:"tenantId,omitempty"`
-}
-
-type providerResponse struct {
-	Status string `json:"status"`
-	Reason string `json:"reason,omitempty"`
-}
-
-func newProviderClient(url string, connectTimeout time.Duration) gateway.ProviderCall {
-	if url == "" {
-		return nil
-	}
-
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.DialContext = (&net.Dialer{
-		Timeout:   connectTimeout,
-		KeepAlive: 30 * time.Second,
-	}).DialContext
-
-	client := &http.Client{
-		Transport: transport,
-	}
-	return func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
-		payload := providerRequest{
-			ReferenceID: req.ReferenceID,
-			To:          req.To,
-			Message:     req.Message,
-			TenantID:    req.TenantID,
-		}
-		body, err := json.Marshal(payload)
-		if err != nil {
-			log.Printf("sms provider error referenceId=%q error=%v", req.ReferenceID, err)
-			return gateway.ProviderResult{}, err
-		}
-
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-		if err != nil {
-			log.Printf("sms provider error referenceId=%q error=%v", req.ReferenceID, err)
-			return gateway.ProviderResult{}, err
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
-
-		log.Printf(
-			"sms provider request referenceId=%q url=%q to=%q message=%q tenantId=%q",
-			req.ReferenceID,
-			url,
-			req.To,
-			req.Message,
-			req.TenantID,
-		)
-		resp, err := client.Do(httpReq)
-		if err != nil {
-			log.Printf("sms provider error referenceId=%q error=%v", req.ReferenceID, err)
-			return gateway.ProviderResult{}, err
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			log.Printf("sms provider error referenceId=%q status=%d", req.ReferenceID, resp.StatusCode)
-			return gateway.ProviderResult{}, errors.New("provider non-200 response")
-		}
-
-		dec := json.NewDecoder(resp.Body)
-		var providerResp providerResponse
-		if err := dec.Decode(&providerResp); err != nil {
-			log.Printf("sms provider error referenceId=%q error=%v", req.ReferenceID, err)
-			return gateway.ProviderResult{}, err
-		}
-		if err := dec.Decode(&struct{}{}); err != io.EOF {
-			log.Printf("sms provider error referenceId=%q error=%v", req.ReferenceID, err)
-			return gateway.ProviderResult{}, errors.New("provider response has trailing data")
-		}
-		if providerResp.Status == "" {
-			log.Printf("sms provider error referenceId=%q error=%v", req.ReferenceID, "provider status missing")
-			return gateway.ProviderResult{}, errors.New("provider status missing")
-		}
-
-		log.Printf(
-			"sms provider response referenceId=%q status=%q reason=%q",
-			req.ReferenceID,
-			providerResp.Status,
-			providerResp.Reason,
-		)
-		return gateway.ProviderResult{
-			Status: providerResp.Status,
-			Reason: providerResp.Reason,
-		}, nil
 	}
 }
