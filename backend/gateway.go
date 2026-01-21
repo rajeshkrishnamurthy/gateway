@@ -5,15 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"strings"
 	"sync"
 )
 
 var ErrInvalidRequest = errors.New("invalid request")
 var errMissingProvider = errors.New("provider is required")
-var errUnknownProvider = errors.New("provider is not supported")
-
-const provider24x7 = "24x7"
 
 // SMSRequest is the domain input for submitting an SMS send request.
 type SMSRequest struct {
@@ -33,25 +29,33 @@ type SMSResponse struct {
 
 // Config defines SMS gateway configuration.
 type Config struct {
-	Provider string
+	Provider ProviderCall
+}
+
+// ProviderCall invokes the configured SMS provider.
+type ProviderCall func(context.Context, SMSRequest) (ProviderResult, error)
+
+// ProviderResult describes the provider outcome for a request.
+type ProviderResult struct {
+	Status string
+	Reason string
 }
 
 // SMSGateway is the core SMS gateway service.
 type SMSGateway struct {
-	mu   sync.Mutex
-	seen map[string]struct{}
+	mu       sync.Mutex
+	seen     map[string]struct{}
+	provider ProviderCall
 }
 
 // New constructs an SMSGateway instance.
 func New(cfg Config) (*SMSGateway, error) {
-	if cfg.Provider == "" {
+	if cfg.Provider == nil {
 		return nil, errMissingProvider
 	}
-	if !strings.EqualFold(cfg.Provider, provider24x7) {
-		return nil, errUnknownProvider
-	}
 	return &SMSGateway{
-		seen: make(map[string]struct{}),
+		seen:     make(map[string]struct{}),
+		provider: cfg.Provider,
 	}, nil
 }
 
@@ -101,53 +105,7 @@ func (g *SMSGateway) SendSMS(ctx context.Context, req SMSRequest) (SMSResponse, 
 	g.seen[req.ReferenceID] = struct{}{}
 	g.mu.Unlock()
 
-	hasDigit := false
-	for _, r := range req.To {
-		switch {
-		case r >= '0' && r <= '9':
-			hasDigit = true
-		case r == ' ' || r == '+' || r == '-' || r == '(' || r == ')':
-		default:
-			status := "rejected"
-			reason := "invalid_recipient"
-			return SMSResponse{
-				ReferenceID: req.ReferenceID,
-				Status:      status,
-				Reason:      reason,
-			}, ErrInvalidRequest
-		}
-	}
-	if !hasDigit {
-		status := "rejected"
-		reason := "invalid_recipient"
-		return SMSResponse{
-			ReferenceID: req.ReferenceID,
-			Status:      status,
-			Reason:      reason,
-		}, ErrInvalidRequest
-	}
-
-	if strings.TrimSpace(req.Message) == "" {
-		status := "rejected"
-		reason := "invalid_message"
-		return SMSResponse{
-			ReferenceID: req.ReferenceID,
-			Status:      status,
-			Reason:      reason,
-		}, ErrInvalidRequest
-	}
-
-	if ctx.Err() != nil {
-		status := "rejected"
-		reason := "provider_failure"
-		return SMSResponse{
-			ReferenceID: req.ReferenceID,
-			Status:      status,
-			Reason:      reason,
-		}, nil
-	}
-
-	messageID, err := newMessageID()
+	providerResult, err := g.provider(ctx, req)
 	if err != nil {
 		status := "rejected"
 		reason := "provider_failure"
@@ -157,12 +115,60 @@ func (g *SMSGateway) SendSMS(ctx context.Context, req SMSRequest) (SMSResponse, 
 			Reason:      reason,
 		}, nil
 	}
-	status := "accepted"
-	return SMSResponse{
-		ReferenceID:      req.ReferenceID,
-		Status:           status,
-		GatewayMessageID: messageID,
-	}, nil
+	switch providerResult.Status {
+	case "accepted":
+		messageID, err := newMessageID()
+		if err != nil {
+			status := "rejected"
+			reason := "provider_failure"
+			return SMSResponse{
+				ReferenceID: req.ReferenceID,
+				Status:      status,
+				Reason:      reason,
+			}, nil
+		}
+		status := "accepted"
+		return SMSResponse{
+			ReferenceID:      req.ReferenceID,
+			Status:           status,
+			GatewayMessageID: messageID,
+		}, nil
+	case "rejected":
+		switch providerResult.Reason {
+		case "invalid_recipient", "invalid_message":
+			status := "rejected"
+			reason := providerResult.Reason
+			return SMSResponse{
+				ReferenceID: req.ReferenceID,
+				Status:      status,
+				Reason:      reason,
+			}, ErrInvalidRequest
+		case "provider_failure":
+			status := "rejected"
+			reason := "provider_failure"
+			return SMSResponse{
+				ReferenceID: req.ReferenceID,
+				Status:      status,
+				Reason:      reason,
+			}, nil
+		default:
+			status := "rejected"
+			reason := "provider_failure"
+			return SMSResponse{
+				ReferenceID: req.ReferenceID,
+				Status:      status,
+				Reason:      reason,
+			}, nil
+		}
+	default:
+		status := "rejected"
+		reason := "provider_failure"
+		return SMSResponse{
+			ReferenceID: req.ReferenceID,
+			Status:      status,
+			Reason:      reason,
+		}, nil
+	}
 }
 
 func newMessageID() (string, error) {

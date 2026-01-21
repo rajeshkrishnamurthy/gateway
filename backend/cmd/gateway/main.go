@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,12 +19,12 @@ import (
 const maxBodyBytes = 16 << 10
 
 var addr = flag.String("addr", ":8080", "HTTP listen address")
-var smsProvider = flag.String("sms-provider", "", "SMS provider name")
+var smsProviderURL = flag.String("sms-provider-url", "", "SMS provider URL")
 
 func main() {
 	flag.Parse()
 
-	gw, err := gateway.New(gateway.Config{Provider: *smsProvider})
+	gw, err := gateway.New(gateway.Config{Provider: newProviderClient(*smsProviderURL)})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -108,5 +109,70 @@ func writeSMSResponse(w http.ResponseWriter, status int, resp gateway.SMSRespons
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		log.Printf("encode response: %v", err)
+	}
+}
+
+type providerRequest struct {
+	ReferenceID string `json:"referenceId"`
+	To          string `json:"to"`
+	Message     string `json:"message"`
+	TenantID    string `json:"tenantId,omitempty"`
+}
+
+type providerResponse struct {
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
+}
+
+func newProviderClient(url string) gateway.ProviderCall {
+	if url == "" {
+		return nil
+	}
+
+	client := &http.Client{}
+	return func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+		payload := providerRequest{
+			ReferenceID: req.ReferenceID,
+			To:          req.To,
+			Message:     req.Message,
+			TenantID:    req.TenantID,
+		}
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return gateway.ProviderResult{}, err
+		}
+
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+		if err != nil {
+			return gateway.ProviderResult{}, err
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			return gateway.ProviderResult{}, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return gateway.ProviderResult{}, errors.New("provider non-200 response")
+		}
+
+		dec := json.NewDecoder(resp.Body)
+		var providerResp providerResponse
+		if err := dec.Decode(&providerResp); err != nil {
+			return gateway.ProviderResult{}, err
+		}
+		if err := dec.Decode(&struct{}{}); err != io.EOF {
+			return gateway.ProviderResult{}, errors.New("provider response has trailing data")
+		}
+		if providerResp.Status == "" {
+			return gateway.ProviderResult{}, errors.New("provider status missing")
+		}
+
+		return gateway.ProviderResult{
+			Status: providerResp.Status,
+			Reason: providerResp.Reason,
+		}, nil
 	}
 }

@@ -13,15 +13,10 @@ func TestNewMissingProvider(t *testing.T) {
 	}
 }
 
-func TestNewUnknownProvider(t *testing.T) {
-	_, err := New(Config{Provider: "unknown"})
-	if err == nil {
-		t.Fatal("expected error for unknown provider")
-	}
-}
-
 func TestSendSMSMissingReferenceID(t *testing.T) {
-	gw, err := New(Config{Provider: "24x7"})
+	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		return ProviderResult{Status: "accepted"}, nil
+	}})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -42,7 +37,9 @@ func TestSendSMSMissingReferenceID(t *testing.T) {
 }
 
 func TestSendSMSMissingTo(t *testing.T) {
-	gw, err := New(Config{Provider: "24x7"})
+	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		return ProviderResult{Status: "accepted"}, nil
+	}})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -63,7 +60,9 @@ func TestSendSMSMissingTo(t *testing.T) {
 }
 
 func TestSendSMSMissingMessage(t *testing.T) {
-	gw, err := New(Config{Provider: "24x7"})
+	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		return ProviderResult{Status: "accepted"}, nil
+	}})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -84,7 +83,9 @@ func TestSendSMSMissingMessage(t *testing.T) {
 }
 
 func TestSendSMSInvalidRecipient(t *testing.T) {
-	gw, err := New(Config{Provider: "24x7"})
+	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		return ProviderResult{Status: "rejected", Reason: "invalid_recipient"}, nil
+	}})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -106,7 +107,9 @@ func TestSendSMSInvalidRecipient(t *testing.T) {
 }
 
 func TestSendSMSInvalidMessage(t *testing.T) {
-	gw, err := New(Config{Provider: "24x7"})
+	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		return ProviderResult{Status: "rejected", Reason: "invalid_message"}, nil
+	}})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -127,8 +130,34 @@ func TestSendSMSInvalidMessage(t *testing.T) {
 	}
 }
 
+func TestSendSMSProviderFailureResult(t *testing.T) {
+	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		return ProviderResult{Status: "rejected", Reason: "provider_failure"}, nil
+	}})
+	if err != nil {
+		t.Fatalf("new gateway: %v", err)
+	}
+
+	resp, err := gw.SendSMS(context.Background(), SMSRequest{
+		ReferenceID: "ref-4b",
+		To:          "15551234567",
+		Message:     "hello",
+	})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if resp.ReferenceID != "ref-4b" {
+		t.Fatalf("expected referenceId ref-4b, got %q", resp.ReferenceID)
+	}
+	if resp.Reason != "provider_failure" {
+		t.Fatalf("expected provider_failure, got %q", resp.Reason)
+	}
+}
+
 func TestSendSMSDuplicateReference(t *testing.T) {
-	gw, err := New(Config{Provider: "24x7"})
+	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		return ProviderResult{Status: "accepted"}, nil
+	}})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -159,7 +188,9 @@ func TestSendSMSDuplicateReference(t *testing.T) {
 }
 
 func TestSendSMSValidRequestAccepted(t *testing.T) {
-	gw, err := New(Config{Provider: "24X7"})
+	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		return ProviderResult{Status: "accepted"}, nil
+	}})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -187,7 +218,9 @@ func TestSendSMSValidRequestAccepted(t *testing.T) {
 }
 
 func TestSendSMSContextCanceled(t *testing.T) {
-	gw, err := New(Config{Provider: "24x7"})
+	gw, err := New(Config{Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+		return ProviderResult{}, ctx.Err()
+	}})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}

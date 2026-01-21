@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"gateway"
 	"net/http"
@@ -10,7 +11,9 @@ import (
 )
 
 func TestSMSSendInvalidJSON(t *testing.T) {
-	gw, err := gateway.New(gateway.Config{Provider: "24x7"})
+	gw, err := gateway.New(gateway.Config{Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+		return gateway.ProviderResult{Status: "accepted"}, nil
+	}})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -37,7 +40,9 @@ func TestSMSSendInvalidJSON(t *testing.T) {
 }
 
 func TestSMSSendTrailingJSON(t *testing.T) {
-	gw, err := gateway.New(gateway.Config{Provider: "24x7"})
+	gw, err := gateway.New(gateway.Config{Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+		return gateway.ProviderResult{Status: "accepted"}, nil
+	}})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -62,7 +67,9 @@ func TestSMSSendTrailingJSON(t *testing.T) {
 }
 
 func TestSMSSendMissingReferenceID(t *testing.T) {
-	gw, err := gateway.New(gateway.Config{Provider: "24x7"})
+	gw, err := gateway.New(gateway.Config{Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+		return gateway.ProviderResult{Status: "accepted"}, nil
+	}})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -87,7 +94,9 @@ func TestSMSSendMissingReferenceID(t *testing.T) {
 }
 
 func TestSMSSendValidRequestAccepted(t *testing.T) {
-	gw, err := gateway.New(gateway.Config{Provider: "24x7"})
+	gw, err := gateway.New(gateway.Config{Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+		return gateway.ProviderResult{Status: "accepted"}, nil
+	}})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -118,7 +127,9 @@ func TestSMSSendValidRequestAccepted(t *testing.T) {
 }
 
 func TestNewMuxRoutesSMSSend(t *testing.T) {
-	gw, err := gateway.New(gateway.Config{Provider: "24x7"})
+	gw, err := gateway.New(gateway.Config{Provider: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+		return gateway.ProviderResult{Status: "accepted"}, nil
+	}})
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
@@ -166,5 +177,85 @@ func TestWriteSMSResponse(t *testing.T) {
 	}
 	if resp.Reason != "invalid_request" {
 		t.Fatalf("expected invalid_request, got %q", resp.Reason)
+	}
+}
+
+func TestSMSSendProviderInvalidMessage(t *testing.T) {
+	var got providerRequest
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/sms/send" {
+			t.Errorf("expected path /sms/send, got %q", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("decode provider request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(providerResponse{Status: "rejected", Reason: "invalid_message"}); err != nil {
+			t.Errorf("encode provider response: %v", err)
+		}
+	}))
+	defer provider.Close()
+
+	gw, err := gateway.New(gateway.Config{Provider: newProviderClient(provider.URL + "/sms/send")})
+	if err != nil {
+		t.Fatalf("new gateway: %v", err)
+	}
+
+	body := `{"referenceId":"ref-9","to":"15551234567","message":"hello"}`
+	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handleSMSSend(gw).ServeHTTP(rec, req)
+
+	if got.ReferenceID != "ref-9" {
+		t.Fatalf("expected provider referenceId ref-9, got %q", got.ReferenceID)
+	}
+	if got.To != "15551234567" {
+		t.Fatalf("expected provider to 15551234567, got %q", got.To)
+	}
+	if got.Message != "hello" {
+		t.Fatalf("expected provider message hello, got %q", got.Message)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rec.Code)
+	}
+
+	var resp gateway.SMSResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Reason != "invalid_message" {
+		t.Fatalf("expected invalid_message, got %q", resp.Reason)
+	}
+}
+
+func TestSMSSendProviderFailureStatus(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer provider.Close()
+
+	gw, err := gateway.New(gateway.Config{Provider: newProviderClient(provider.URL + "/sms/send")})
+	if err != nil {
+		t.Fatalf("new gateway: %v", err)
+	}
+
+	body := `{"referenceId":"ref-10","to":"15551234567","message":"hello"}`
+	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handleSMSSend(gw).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var resp gateway.SMSResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Reason != "provider_failure" {
+		t.Fatalf("expected provider_failure, got %q", resp.Reason)
 	}
 }
