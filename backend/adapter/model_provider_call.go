@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"gateway"
+	"gateway/pii"
 	"io"
 	"log"
 	"net"
@@ -30,6 +31,7 @@ type modelProviderErrorBody struct {
 	Error string `json:"error"`
 }
 
+// ModelProviderCall builds the ProviderCall for the canonical model provider.
 func ModelProviderCall(providerURL string, connectTimeout time.Duration) gateway.ProviderCall {
 	if providerURL == "" {
 		return nil
@@ -47,7 +49,7 @@ func ModelProviderCall(providerURL string, connectTimeout time.Duration) gateway
 	return func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
 		recipientMasked := maskRecipient(req.To)
 		messageLen := len(req.Message)
-		messageHash := hashMessage(req.Message)
+		messageHash := pii.Hash(req.Message)
 
 		requestBody := modelProviderRequestBody{
 			Destination: req.To,

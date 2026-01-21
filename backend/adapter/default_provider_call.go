@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"gateway"
+	"gateway/pii"
 	"io"
 	"log"
 	"net"
@@ -27,6 +28,7 @@ type providerResponse struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// DefaultProviderCall builds the ProviderCall for the default SMS provider protocol.
 func DefaultProviderCall(providerURL string, connectTimeout time.Duration) gateway.ProviderCall {
 	if providerURL == "" {
 		return nil
@@ -44,7 +46,7 @@ func DefaultProviderCall(providerURL string, connectTimeout time.Duration) gatew
 	return func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
 		recipientMasked := maskRecipient(req.To)
 		messageLen := len(req.Message)
-		messageHash := hashMessage(req.Message)
+		messageHash := pii.Hash(req.Message)
 
 		payload := providerRequest{
 			ReferenceID: req.ReferenceID,
