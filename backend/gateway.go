@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"log"
 	"sync"
 	"time"
 )
@@ -52,7 +53,7 @@ type ProviderResult struct {
 // SMSGateway is the core SMS gateway service.
 type SMSGateway struct {
 	mu              sync.Mutex
-	seen            map[string]struct{}
+	inflight        map[string]struct{}
 	provider        ProviderCall
 	providerTimeout time.Duration
 }
@@ -66,7 +67,7 @@ func New(cfg Config) (*SMSGateway, error) {
 		return nil, errInvalidProviderTimeout
 	}
 	return &SMSGateway{
-		seen:            make(map[string]struct{}),
+		inflight:        make(map[string]struct{}),
 		provider:        cfg.Provider,
 		providerTimeout: cfg.ProviderTimeout,
 	}, nil
@@ -103,7 +104,7 @@ func (g *SMSGateway) SendSMS(ctx context.Context, req SMSRequest) (SMSResponse, 
 	}
 
 	g.mu.Lock()
-	if _, ok := g.seen[req.ReferenceID]; ok {
+	if _, ok := g.inflight[req.ReferenceID]; ok {
 		g.mu.Unlock()
 		status := "rejected"
 		reason := "duplicate_reference"
@@ -113,15 +114,26 @@ func (g *SMSGateway) SendSMS(ctx context.Context, req SMSRequest) (SMSResponse, 
 			Reason:      reason,
 		}, ErrInvalidRequest
 	}
-	// referenceId is consumed on first sight to keep idempotency strict.
-	// Invalid or failed attempts also consume the id in Phase 3.
-	g.seen[req.ReferenceID] = struct{}{}
+	g.inflight[req.ReferenceID] = struct{}{}
 	g.mu.Unlock()
+	defer func() {
+		g.mu.Lock()
+		delete(g.inflight, req.ReferenceID)
+		g.mu.Unlock()
+	}()
 
 	providerCtx, cancel := context.WithTimeout(ctx, g.providerTimeout)
 	defer cancel()
 
-	providerResult, err := g.provider(providerCtx, req)
+	providerResult, err := func() (providerResult ProviderResult, err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("sms provider panic referenceId=%q panic=%v", req.ReferenceID, r)
+				err = errors.New("provider panic")
+			}
+		}()
+		return g.provider(providerCtx, req)
+	}()
 	if err != nil {
 		status := "rejected"
 		reason := "provider_failure"

@@ -199,9 +199,43 @@ func TestSendSMSProviderFailureResult(t *testing.T) {
 	}
 }
 
-func TestSendSMSDuplicateReference(t *testing.T) {
+func TestSendSMSProviderPanic(t *testing.T) {
 	gw, err := New(Config{
 		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+			panic("boom")
+		},
+		ProviderTimeout: defaultProviderTimeout,
+	})
+	if err != nil {
+		t.Fatalf("new gateway: %v", err)
+	}
+
+	resp, err := gw.SendSMS(context.Background(), SMSRequest{
+		ReferenceID: "ref-panic-1",
+		To:          "15551234567",
+		Message:     "hello",
+	})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if resp.ReferenceID != "ref-panic-1" {
+		t.Fatalf("expected referenceId ref-panic-1, got %q", resp.ReferenceID)
+	}
+	if resp.Status != "rejected" {
+		t.Fatalf("expected rejected status, got %q", resp.Status)
+	}
+	if resp.Reason != "provider_failure" {
+		t.Fatalf("expected provider_failure, got %q", resp.Reason)
+	}
+}
+
+func TestSendSMSDuplicateReferenceInFlight(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	gw, err := New(Config{
+		Provider: func(ctx context.Context, req SMSRequest) (ProviderResult, error) {
+			close(started)
+			<-release
 			return ProviderResult{Status: "accepted"}, nil
 		},
 		ProviderTimeout: defaultProviderTimeout,
@@ -210,13 +244,20 @@ func TestSendSMSDuplicateReference(t *testing.T) {
 		t.Fatalf("new gateway: %v", err)
 	}
 
-	_, err = gw.SendSMS(context.Background(), SMSRequest{
-		ReferenceID: "ref-5",
-		To:          "15551234567",
-		Message:     "hello",
-	})
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := gw.SendSMS(context.Background(), SMSRequest{
+			ReferenceID: "ref-5",
+			To:          "15551234567",
+			Message:     "hello",
+		})
+		errCh <- err
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("expected provider call to start")
 	}
 
 	resp, err := gw.SendSMS(context.Background(), SMSRequest{
@@ -232,6 +273,11 @@ func TestSendSMSDuplicateReference(t *testing.T) {
 	}
 	if resp.Reason != "duplicate_reference" {
 		t.Fatalf("expected duplicate_reference, got %q", resp.Reason)
+	}
+
+	close(release)
+	if err := <-errCh; err != nil {
+		t.Fatalf("expected nil error, got %v", err)
 	}
 }
 

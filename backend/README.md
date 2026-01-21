@@ -56,6 +56,11 @@ It must not be assumed to exist:
 * when submission outcome is ambiguous
 * when the provider fails or times out
 
+## Idempotency
+
+Gateway prevents concurrent duplicate submissions within a single process using referenceId.
+It does not provide durable or cross-process idempotency, so a duplicate after a request completes may be accepted.
+
 ## Troubleshooting
 
 Gateway troubleshooting is log-based.
