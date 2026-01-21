@@ -37,3 +37,8 @@ Thumbs.db
 # Env files
 .env
 
+# Coverage
+coverage.out
+
+# Go binaries (project-level executables)
+gateway
