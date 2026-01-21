@@ -12,6 +12,7 @@ import (
 )
 
 const defaultProviderTimeout = 30 * time.Second
+const defaultProviderConnectTimeout = minProviderConnectTimeout
 
 func TestSMSSendInvalidJSON(t *testing.T) {
 	gw, err := gateway.New(gateway.Config{
@@ -215,7 +216,7 @@ func TestSMSSendProviderInvalidMessage(t *testing.T) {
 	defer provider.Close()
 
 	gw, err := gateway.New(gateway.Config{
-		Provider:        newProviderClient(provider.URL + "/sms/send"),
+		Provider:        newProviderClient(provider.URL+"/sms/send", defaultProviderConnectTimeout),
 		ProviderTimeout: defaultProviderTimeout,
 	})
 	if err != nil {
@@ -258,7 +259,7 @@ func TestSMSSendProviderFailureStatus(t *testing.T) {
 	defer provider.Close()
 
 	gw, err := gateway.New(gateway.Config{
-		Provider:        newProviderClient(provider.URL + "/sms/send"),
+		Provider:        newProviderClient(provider.URL+"/sms/send", defaultProviderConnectTimeout),
 		ProviderTimeout: defaultProviderTimeout,
 	})
 	if err != nil {

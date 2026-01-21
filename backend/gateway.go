@@ -126,6 +126,7 @@ func (g *SMSGateway) SendSMS(ctx context.Context, req SMSRequest) (SMSResponse, 
 	defer cancel()
 
 	providerResult, err := func() (providerResult ProviderResult, err error) {
+		// Normalize provider panics to provider_failure to keep the gateway contract stable.
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("sms provider panic referenceId=%q panic=%v", req.ReferenceID, r)

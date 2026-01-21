@@ -9,6 +9,7 @@ import (
 	"gateway"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -25,10 +26,16 @@ var showVersion = flag.Bool("version", false, "show version")
 
 const version = "0.1.0"
 
+const (
+	minProviderConnectTimeout = 2 * time.Second
+	maxProviderConnectTimeout = 10 * time.Second
+)
+
 type fileConfig struct {
-	Addr                      string `json:"addr"`
-	SMSProviderURL            string `json:"smsProviderUrl"`
-	SMSProviderTimeoutSeconds int    `json:"smsProviderTimeoutSeconds"`
+	Addr                             string `json:"addr"`
+	SMSProviderURL                   string `json:"smsProviderUrl"`
+	SMSProviderTimeoutSeconds        int    `json:"smsProviderTimeoutSeconds"`
+	SMSProviderConnectTimeoutSeconds int    `json:"smsProviderConnectTimeoutSeconds"`
 }
 
 func main() {
@@ -48,8 +55,9 @@ func main() {
 	}
 
 	providerTimeout := time.Duration(cfg.SMSProviderTimeoutSeconds) * time.Second
+	providerConnectTimeout := time.Duration(cfg.SMSProviderConnectTimeoutSeconds) * time.Second
 	gw, err := gateway.New(gateway.Config{
-		Provider:        newProviderClient(cfg.SMSProviderURL),
+		Provider:        newProviderClient(cfg.SMSProviderURL, providerConnectTimeout),
 		ProviderTimeout: providerTimeout,
 	})
 	if err != nil {
@@ -70,11 +78,12 @@ func main() {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
 	log.Printf(
-		"listening on %s configPath=%q smsProviderUrl=%q smsProviderTimeoutSeconds=%d",
+		"listening on %s configPath=%q smsProviderUrl=%q smsProviderTimeoutSeconds=%d smsProviderConnectTimeoutSeconds=%d",
 		cfg.Addr,
 		*configPath,
 		cfg.SMSProviderURL,
 		cfg.SMSProviderTimeoutSeconds,
+		cfg.SMSProviderConnectTimeoutSeconds,
 	)
 
 	select {
@@ -126,6 +135,13 @@ func loadConfig(path string) (fileConfig, error) {
 	}
 	if cfg.SMSProviderTimeoutSeconds < 15 || cfg.SMSProviderTimeoutSeconds > 60 {
 		return fileConfig{}, errors.New("smsProviderTimeoutSeconds must be between 15 and 60")
+	}
+	if cfg.SMSProviderConnectTimeoutSeconds == 0 {
+		cfg.SMSProviderConnectTimeoutSeconds = int(minProviderConnectTimeout / time.Second)
+	}
+	connectTimeout := time.Duration(cfg.SMSProviderConnectTimeoutSeconds) * time.Second
+	if connectTimeout < minProviderConnectTimeout || connectTimeout > maxProviderConnectTimeout {
+		return fileConfig{}, errors.New("smsProviderConnectTimeoutSeconds must be between 2 and 10")
 	}
 
 	return cfg, nil
@@ -208,12 +224,20 @@ type providerResponse struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-func newProviderClient(url string) gateway.ProviderCall {
+func newProviderClient(url string, connectTimeout time.Duration) gateway.ProviderCall {
 	if url == "" {
 		return nil
 	}
 
-	client := &http.Client{}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = (&net.Dialer{
+		Timeout:   connectTimeout,
+		KeepAlive: 30 * time.Second,
+	}).DialContext
+
+	client := &http.Client{
+		Transport: transport,
+	}
 	return func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
 		payload := providerRequest{
 			ReferenceID: req.ReferenceID,

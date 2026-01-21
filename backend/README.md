@@ -80,6 +80,7 @@ Gateway loads its configuration from `config.json` in the working directory:
 {
   "addr": ":8080",
   "smsProviderUrl": "http://localhost:9090/sms/send",
+  "smsProviderConnectTimeoutSeconds": 2,
   "smsProviderTimeoutSeconds": 30
 }
 ```
