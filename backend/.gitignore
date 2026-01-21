@@ -10,6 +10,7 @@
 *.out
 *.a
 *.o
+bin/ 
 
 # Go workspace files
 go.work
