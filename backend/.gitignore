@@ -1,26 +1,27 @@
-# Binaries
+# Go build artifacts
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-
-# Go build artifacts
 *.test
 *.out
 *.a
 *.o
-bin/ 
+
+# Build output
+bin/
+gateway
 
 # Go workspace files
 go.work
 go.work.sum
 
 # Coverage
-*.coverprofile
 coverage.out
+*.coverprofile
 
-# Dependency directories (only if you vendor manually)
+# Dependency directories
 vendor/
 
 # IDE / editor
@@ -38,8 +39,3 @@ Thumbs.db
 # Env files
 .env
 
-# Coverage
-coverage.out
-
-# Go binaries (project-level executables)
-gateway
