@@ -41,7 +41,7 @@ func TestSMSSendInvalidJSON(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader("{"))
 	rec := httptest.NewRecorder()
 
-	handleSMSSend(gw, nil).ServeHTTP(rec, req)
+	handleSMSSend(gw, nil, nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", rec.Code)
@@ -74,7 +74,7 @@ func TestSMSSendTrailingJSON(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	handleSMSSend(gw, nil).ServeHTTP(rec, req)
+	handleSMSSend(gw, nil, nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", rec.Code)
@@ -104,7 +104,7 @@ func TestSMSSendMissingReferenceID(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	handleSMSSend(gw, nil).ServeHTTP(rec, req)
+	handleSMSSend(gw, nil, nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", rec.Code)
@@ -134,7 +134,7 @@ func TestSMSSendValidRequestAccepted(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	handleSMSSend(gw, nil).ServeHTTP(rec, req)
+	handleSMSSend(gw, nil, nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
@@ -169,7 +169,7 @@ func TestNewMuxRoutesSMSSend(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader(""))
 	rec := httptest.NewRecorder()
 
-	newMux(gw, nil).ServeHTTP(rec, req)
+	newMux(gw, nil, nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", rec.Code)
@@ -240,7 +240,7 @@ func TestSMSSendProviderInvalidMessage(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	handleSMSSend(gw, nil).ServeHTTP(rec, req)
+	handleSMSSend(gw, nil, nil).ServeHTTP(rec, req)
 
 	if got.ReferenceID != "ref-9" {
 		t.Fatalf("expected provider referenceId ref-9, got %q", got.ReferenceID)
@@ -283,7 +283,7 @@ func TestSMSSendProviderFailureStatus(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	handleSMSSend(gw, nil).ServeHTTP(rec, req)
+	handleSMSSend(gw, nil, nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)

@@ -1,0 +1,111 @@
+<main class="page">
+  <header class="page-header">
+    <div class="brand">
+      <h1>Metrics Snapshot</h1>
+      <p>Aggregates only. No history, charts, or alerting.</p>
+    </div>
+    {{template "nav.tmpl" .}}
+  </header>
+
+  <section class="panel">
+    <h2>Totals</h2>
+    <div class="metrics-grid two-col">
+      <div class="metric-card">
+        <div class="muted">Total requests</div>
+        <div class="metric-value">{{.TotalRequests}}</div>
+      </div>
+      <div class="metric-card">
+        <div class="muted">Accepted</div>
+        <div class="metric-value">{{.AcceptedTotal}}</div>
+      </div>
+      <div class="metric-card">
+        <div class="muted">Rejected</div>
+        <div class="metric-value">{{.RejectedTotal}}</div>
+      </div>
+      <div class="metric-card">
+        <div class="muted">Provider failures</div>
+        <div class="metric-value">{{.ProviderFailureCount}}</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Rejections by reason</h2>
+    {{if .Rejections}}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Reason</th>
+          <th>Count</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Rejections}}
+        <tr>
+          <td>{{.Reason}}</td>
+          <td>{{.Count}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted">No rejection data available.</p>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <h2>Latency summary</h2>
+    <div class="split two-col">
+      <div>
+        <h3>Gateway request duration</h3>
+        {{if .RequestLatency}}
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Bucket</th>
+              <th>Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .RequestLatency}}
+            <tr>
+              <td>{{.Label}}</td>
+              <td>{{.Count}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+        {{else}}
+        <p class="muted">No latency data available.</p>
+        {{end}}
+      </div>
+      <div>
+        <h3>Provider call duration</h3>
+        {{if .ProviderLatency}}
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Bucket</th>
+              <th>Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .ProviderLatency}}
+            <tr>
+              <td>{{.Label}}</td>
+              <td>{{.Count}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+        {{else}}
+        <p class="muted">No latency data available.</p>
+        {{end}}
+      </div>
+    </div>
+  </section>
+
+  <section class="note">
+    Metrics are informational aggregates. They do not imply delivery outcomes.
+  </section>
+</main>

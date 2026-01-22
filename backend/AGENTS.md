@@ -86,7 +86,7 @@ Rules:
 - Must only perform input parsing, core invocation, and template selection.
 - Any data shaping beyond trivial field assignment belongs in the core.
 - Must render existing HTML templates using `html/template`.
-- Templates are located under `../http/ui/` and must not be duplicated or moved.
+- Templates are located under `../ui/` and must not be duplicated or moved.
 - Templates must receive explicit view structs; no implicit or global data.
 - Handlers must not embed business rules or decision logic.
 - Templates must be treated as fragments, not documents.

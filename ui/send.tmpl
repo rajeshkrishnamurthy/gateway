@@ -1,0 +1,45 @@
+<main class="page">
+  <header class="page-header">
+    <div class="brand">
+      <h1>Send Test SMS</h1>
+      <p>Manual submission to the gateway. This mirrors POST /sms/send and returns the raw response.</p>
+    </div>
+    {{template "nav.tmpl" .}}
+  </header>
+
+  <section class="panel">
+    <h2>Request</h2>
+    <p class="muted">No retry, no send again, no history. Use referenceId values you can trace in logs.</p>
+    <form class="form-grid" method="post" action="/sms/send" hx-post="/sms/send" hx-target="#send-result" hx-swap="innerHTML" hx-ext="json-enc">
+      <div class="field">
+        <label for="referenceId">referenceId</label>
+        <input id="referenceId" name="referenceId" type="text" required />
+      </div>
+      <div class="field">
+        <label for="to">to</label>
+        <input id="to" name="to" type="text" required />
+      </div>
+      <div class="field">
+        <label for="message">message</label>
+        <textarea id="message" name="message" required></textarea>
+      </div>
+      <div class="field">
+        <label for="tenantId">tenantId</label>
+        <input id="tenantId" name="tenantId" type="text" />
+        <small>for correlation only</small>
+      </div>
+      <div class="actions">
+        <button class="button" type="submit">Submit request</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel" id="send-result">
+    <h2>Gateway response</h2>
+    <p class="muted">Submit a request to see status, reason, and gatewayMessageId.</p>
+  </section>
+
+  <section class="note">
+    Accepted means submitted, not delivered. This console does not infer delivery or retries.
+  </section>
+</main>

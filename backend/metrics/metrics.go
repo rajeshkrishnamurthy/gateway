@@ -107,41 +107,65 @@ func (r *Registry) WritePrometheus(w io.Writer) {
 	}
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	providerName := r.providerName
+	requestsTotal := r.requestsTotal
+	acceptedTotal := r.acceptedTotal
+	rejectedTotal := r.rejectedTotal
+	rejectedInvalidRequest := r.rejectedInvalidRequest
+	rejectedDuplicateReference := r.rejectedDuplicateReference
+	rejectedInvalidRecipient := r.rejectedInvalidRecipient
+	rejectedInvalidMessage := r.rejectedInvalidMessage
+	rejectedProviderFailure := r.rejectedProviderFailure
+	providerFailures := r.providerFailures
+	providerTimeouts := r.providerTimeouts
+	providerPanics := r.providerPanics
+	requestDuration := histogram{
+		buckets: append([]float64(nil), r.requestDuration.buckets...),
+		counts:  append([]uint64(nil), r.requestDuration.counts...),
+		count:   r.requestDuration.count,
+		sum:     r.requestDuration.sum,
+	}
+	providerDuration := histogram{
+		buckets: append([]float64(nil), r.providerDuration.buckets...),
+		counts:  append([]uint64(nil), r.providerDuration.counts...),
+		count:   r.providerDuration.count,
+		sum:     r.providerDuration.sum,
+	}
+	r.mu.Unlock()
 
-	providerLabel := fmt.Sprintf("provider=%q", r.providerName)
+	providerLabel := fmt.Sprintf("provider=%q", providerName)
 
 	fmt.Fprintf(w, "# HELP gateway_requests_total Total gateway requests.\n")
 	fmt.Fprintf(w, "# TYPE gateway_requests_total counter\n")
-	fmt.Fprintf(w, "gateway_requests_total{%s} %d\n", providerLabel, r.requestsTotal)
+	fmt.Fprintf(w, "gateway_requests_total{%s} %d\n", providerLabel, requestsTotal)
 
 	fmt.Fprintf(w, "# HELP gateway_outcomes_total Gateway outcomes by status.\n")
 	fmt.Fprintf(w, "# TYPE gateway_outcomes_total counter\n")
-	fmt.Fprintf(w, "gateway_outcomes_total{%s,outcome=%q} %d\n", providerLabel, "accepted", r.acceptedTotal)
-	fmt.Fprintf(w, "gateway_outcomes_total{%s,outcome=%q} %d\n", providerLabel, "rejected", r.rejectedTotal)
+	fmt.Fprintf(w, "gateway_outcomes_total{%s,outcome=%q} %d\n", providerLabel, "accepted", acceptedTotal)
+	fmt.Fprintf(w, "gateway_outcomes_total{%s,outcome=%q} %d\n", providerLabel, "rejected", rejectedTotal)
 
 	fmt.Fprintf(w, "# HELP gateway_rejections_total Gateway rejections by reason.\n")
 	fmt.Fprintf(w, "# TYPE gateway_rejections_total counter\n")
-	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "invalid_request", r.rejectedInvalidRequest)
-	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "duplicate_reference", r.rejectedDuplicateReference)
-	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "invalid_recipient", r.rejectedInvalidRecipient)
-	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "invalid_message", r.rejectedInvalidMessage)
-	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "provider_failure", r.rejectedProviderFailure)
+	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "invalid_request", rejectedInvalidRequest)
+	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "duplicate_reference", rejectedDuplicateReference)
+	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "invalid_recipient", rejectedInvalidRecipient)
+	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "invalid_message", rejectedInvalidMessage)
+	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "provider_failure", rejectedProviderFailure)
 
 	fmt.Fprintf(w, "# HELP gateway_provider_failures_total Provider failures.\n")
 	fmt.Fprintf(w, "# TYPE gateway_provider_failures_total counter\n")
-	fmt.Fprintf(w, "gateway_provider_failures_total{%s} %d\n", providerLabel, r.providerFailures)
+	fmt.Fprintf(w, "gateway_provider_failures_total{%s} %d\n", providerLabel, providerFailures)
 
 	fmt.Fprintf(w, "# HELP gateway_provider_timeouts_total Provider timeouts.\n")
 	fmt.Fprintf(w, "# TYPE gateway_provider_timeouts_total counter\n")
-	fmt.Fprintf(w, "gateway_provider_timeouts_total{%s} %d\n", providerLabel, r.providerTimeouts)
+	fmt.Fprintf(w, "gateway_provider_timeouts_total{%s} %d\n", providerLabel, providerTimeouts)
 
 	fmt.Fprintf(w, "# HELP gateway_provider_panics_total Provider panics recovered.\n")
 	fmt.Fprintf(w, "# TYPE gateway_provider_panics_total counter\n")
-	fmt.Fprintf(w, "gateway_provider_panics_total{%s} %d\n", providerLabel, r.providerPanics)
+	fmt.Fprintf(w, "gateway_provider_panics_total{%s} %d\n", providerLabel, providerPanics)
 
-	writeHistogram(w, "gateway_request_duration_seconds", "Gateway request duration in seconds.", providerLabel, r.requestDuration)
-	writeHistogram(w, "gateway_provider_duration_seconds", "Provider call duration in seconds.", providerLabel, r.providerDuration)
+	writeHistogram(w, "gateway_request_duration_seconds", "Gateway request duration in seconds.", providerLabel, requestDuration)
+	writeHistogram(w, "gateway_provider_duration_seconds", "Provider call duration in seconds.", providerLabel, providerDuration)
 }
 
 func newHistogram(buckets []float64) histogram {

@@ -1,0 +1,15 @@
+<h2>Gateway response</h2>
+<dl class="kv">
+  <div>
+    <dt>Status</dt>
+    <dd class="status status-{{.Status}}">{{.Status}}</dd>
+  </div>
+  <div>
+    <dt>Reason</dt>
+    <dd>{{if .Reason}}{{.Reason}}{{else}}-{{end}}</dd>
+  </div>
+  <div>
+    <dt>gatewayMessageId</dt>
+    <dd>{{if .GatewayMessageID}}{{.GatewayMessageID}}{{else}}-{{end}}</dd>
+  </div>
+</dl>
