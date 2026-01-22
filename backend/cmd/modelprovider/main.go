@@ -5,8 +5,10 @@ import (
 	"flag"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"strings"
+	"time"
 )
 
 const (
@@ -14,6 +16,8 @@ const (
 	providerFailureToken  = "FAIL"
 	modelProviderID       = "abc123"
 	modelProviderEndpoint = "/sms/send"
+	minProcessingDelay    = 50 * time.Millisecond
+	maxProcessingDelay    = 2 * time.Second
 )
 
 var addr = flag.String("addr", ":9091", "HTTP listen address")
@@ -34,6 +38,7 @@ type modelProviderErrorBody struct {
 
 func main() {
 	flag.Parse()
+	rand.Seed(time.Now().UnixNano())
 
 	mux := http.NewServeMux()
 	mux.HandleFunc(modelProviderEndpoint, handleSend)
@@ -61,6 +66,13 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 		writeError(w, referenceID, "INVALID_MESSAGE")
 		return
 	}
+
+	delay := minProcessingDelay
+	if maxProcessingDelay > minProcessingDelay {
+		delay += time.Duration(rand.Int63n(int64(maxProcessingDelay - minProcessingDelay)))
+	}
+	// Simulate provider latency for manual end-to-end testing. TODO: remove this delay.
+	time.Sleep(delay)
 
 	if strings.TrimSpace(req.Destination) == "" || !isNumericDestination(req.Destination) {
 		writeError(w, referenceID, "INVALID_RECIPIENT")

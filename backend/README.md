@@ -58,13 +58,19 @@ It must not be assumed to exist:
 
 ## Idempotency
 
-Gateway prevents concurrent duplicate submissions within a single process using referenceId.
-It does not provide durable or cross-process idempotency, so a duplicate after a request completes may be accepted.
+Gateway enforces idempotency only for concurrent in-flight requests within a single process using referenceId.
+It does not guarantee idempotency across time, retries, or restarts, so a duplicate after a request completes may be accepted.
 
 ## Troubleshooting
 
 Gateway troubleshooting is log-based.
 Submission behavior can be reconstructed using the client-supplied referenceId.
+
+## Metrics
+
+Gateway exposes Prometheus metrics at `/metrics`.
+Metrics are low-cardinality and use the adapter provider name for the `provider` label.
+Latency histograms share buckets at 0.1s, 0.25s, 0.5s, 1s, 2.5s, and 5s.
 
 ## Local fake provider + gateway smoke test
 
@@ -110,6 +116,28 @@ curl -i -X POST http://localhost:8080/sms/send \
 curl -i -X POST http://localhost:8080/sms/send \
   -H 'Content-Type: application/json' \
   -d '{"referenceId":"ref-4FAIL","to":"15551234567","message":"hello"}'
+```
+
+## Model provider (adapter demo)
+
+Start the model provider:
+
+```sh
+go run ./cmd/modelprovider -addr :9091
+```
+
+Note: the model provider intentionally adds a random 50ms–2s delay for manual latency testing (TODO: remove).
+
+Configure the gateway to use it:
+
+```json
+{
+  "smsProvider": "model",
+  "addr": ":8080",
+  "smsProviderUrl": "http://localhost:9091/sms/send",
+  "smsProviderConnectTimeoutSeconds": 2,
+  "smsProviderTimeoutSeconds": 30
+}
 ```
 
 Final note

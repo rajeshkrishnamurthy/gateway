@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const defaultProviderName = "default-provider"
+const DefaultProviderName = "default-provider"
 
 type providerRequest struct {
 	ReferenceID string `json:"referenceId"`
@@ -56,13 +56,13 @@ func DefaultProviderCall(providerURL string, connectTimeout time.Duration) gatew
 		}
 		body, err := json.Marshal(payload)
 		if err != nil {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, defaultProviderName, err)
+			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, DefaultProviderName, err)
 			return gateway.ProviderResult{}, err
 		}
 
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, providerURL, bytes.NewReader(body))
 		if err != nil {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, defaultProviderName, err)
+			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, DefaultProviderName, err)
 			return gateway.ProviderResult{}, err
 		}
 		httpReq.Header.Set("Content-Type", "application/json")
@@ -70,7 +70,7 @@ func DefaultProviderCall(providerURL string, connectTimeout time.Duration) gatew
 		log.Printf(
 			"sms provider request referenceId=%q provider=%q url=%q recipientMasked=%q messageLen=%d messageHash=%q",
 			req.ReferenceID,
-			defaultProviderName,
+			DefaultProviderName,
 			providerURL,
 			recipientMasked,
 			messageLen,
@@ -78,35 +78,35 @@ func DefaultProviderCall(providerURL string, connectTimeout time.Duration) gatew
 		)
 		resp, err := client.Do(httpReq)
 		if err != nil {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, defaultProviderName, err)
+			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, DefaultProviderName, err)
 			return gateway.ProviderResult{}, err
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			log.Printf("sms provider error referenceId=%q provider=%q status=%d", req.ReferenceID, defaultProviderName, resp.StatusCode)
+			log.Printf("sms provider error referenceId=%q provider=%q status=%d", req.ReferenceID, DefaultProviderName, resp.StatusCode)
 			return gateway.ProviderResult{}, errors.New("provider non-200 response")
 		}
 
 		dec := json.NewDecoder(resp.Body)
 		var providerResp providerResponse
 		if err := dec.Decode(&providerResp); err != nil {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, defaultProviderName, err)
+			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, DefaultProviderName, err)
 			return gateway.ProviderResult{}, err
 		}
 		if err := dec.Decode(&struct{}{}); err != io.EOF {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, defaultProviderName, err)
+			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, DefaultProviderName, err)
 			return gateway.ProviderResult{}, errors.New("provider response has trailing data")
 		}
 		if providerResp.Status == "" {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, defaultProviderName, "provider status missing")
+			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, DefaultProviderName, "provider status missing")
 			return gateway.ProviderResult{}, errors.New("provider status missing")
 		}
 
 		log.Printf(
 			"sms provider response referenceId=%q provider=%q status=%q reason=%q",
 			req.ReferenceID,
-			defaultProviderName,
+			DefaultProviderName,
 			providerResp.Status,
 			providerResp.Reason,
 		)

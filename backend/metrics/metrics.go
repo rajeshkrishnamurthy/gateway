@@ -1,0 +1,184 @@
+package metrics
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"strconv"
+	"sync"
+	"time"
+)
+
+type Registry struct {
+	providerName string
+
+	mu sync.Mutex
+
+	requestsTotal uint64
+	acceptedTotal uint64
+	rejectedTotal uint64
+
+	rejectedInvalidRequest     uint64
+	rejectedDuplicateReference uint64
+	rejectedInvalidRecipient   uint64
+	rejectedInvalidMessage     uint64
+	rejectedProviderFailure    uint64
+
+	providerFailures uint64
+	providerTimeouts uint64
+	providerPanics   uint64
+
+	requestDuration  histogram
+	providerDuration histogram
+}
+
+type histogram struct {
+	buckets []float64
+	counts  []uint64
+	count   uint64
+	sum     float64
+}
+
+func New(providerName string, buckets []time.Duration) *Registry {
+	bucketSeconds := make([]float64, len(buckets))
+	for i, b := range buckets {
+		bucketSeconds[i] = b.Seconds()
+	}
+	return &Registry{
+		providerName:     providerName,
+		requestDuration:  newHistogram(bucketSeconds),
+		providerDuration: newHistogram(bucketSeconds),
+	}
+}
+
+func (r *Registry) ObserveRequest(outcome, reason string, duration time.Duration) {
+	if r == nil {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.requestsTotal++
+	r.requestDuration.observe(duration.Seconds())
+
+	switch outcome {
+	case "accepted":
+		r.acceptedTotal++
+	case "rejected":
+		r.rejectedTotal++
+		switch reason {
+		case "invalid_request":
+			r.rejectedInvalidRequest++
+		case "duplicate_reference":
+			r.rejectedDuplicateReference++
+		case "invalid_recipient":
+			r.rejectedInvalidRecipient++
+		case "invalid_message":
+			r.rejectedInvalidMessage++
+		case "provider_failure":
+			r.rejectedProviderFailure++
+			r.providerFailures++
+		}
+	}
+}
+
+func (r *Registry) ObserveProviderCall(duration time.Duration, err error, panicRecovered bool) {
+	if r == nil {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.providerDuration.observe(duration.Seconds())
+	if panicRecovered {
+		r.providerPanics++
+	}
+	if err != nil && errors.Is(err, context.DeadlineExceeded) {
+		r.providerTimeouts++
+	}
+}
+
+func (r *Registry) WritePrometheus(w io.Writer) {
+	if r == nil {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	providerLabel := fmt.Sprintf("provider=%q", r.providerName)
+
+	fmt.Fprintf(w, "# HELP gateway_requests_total Total gateway requests.\n")
+	fmt.Fprintf(w, "# TYPE gateway_requests_total counter\n")
+	fmt.Fprintf(w, "gateway_requests_total{%s} %d\n", providerLabel, r.requestsTotal)
+
+	fmt.Fprintf(w, "# HELP gateway_outcomes_total Gateway outcomes by status.\n")
+	fmt.Fprintf(w, "# TYPE gateway_outcomes_total counter\n")
+	fmt.Fprintf(w, "gateway_outcomes_total{%s,outcome=%q} %d\n", providerLabel, "accepted", r.acceptedTotal)
+	fmt.Fprintf(w, "gateway_outcomes_total{%s,outcome=%q} %d\n", providerLabel, "rejected", r.rejectedTotal)
+
+	fmt.Fprintf(w, "# HELP gateway_rejections_total Gateway rejections by reason.\n")
+	fmt.Fprintf(w, "# TYPE gateway_rejections_total counter\n")
+	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "invalid_request", r.rejectedInvalidRequest)
+	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "duplicate_reference", r.rejectedDuplicateReference)
+	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "invalid_recipient", r.rejectedInvalidRecipient)
+	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "invalid_message", r.rejectedInvalidMessage)
+	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "provider_failure", r.rejectedProviderFailure)
+
+	fmt.Fprintf(w, "# HELP gateway_provider_failures_total Provider failures.\n")
+	fmt.Fprintf(w, "# TYPE gateway_provider_failures_total counter\n")
+	fmt.Fprintf(w, "gateway_provider_failures_total{%s} %d\n", providerLabel, r.providerFailures)
+
+	fmt.Fprintf(w, "# HELP gateway_provider_timeouts_total Provider timeouts.\n")
+	fmt.Fprintf(w, "# TYPE gateway_provider_timeouts_total counter\n")
+	fmt.Fprintf(w, "gateway_provider_timeouts_total{%s} %d\n", providerLabel, r.providerTimeouts)
+
+	fmt.Fprintf(w, "# HELP gateway_provider_panics_total Provider panics recovered.\n")
+	fmt.Fprintf(w, "# TYPE gateway_provider_panics_total counter\n")
+	fmt.Fprintf(w, "gateway_provider_panics_total{%s} %d\n", providerLabel, r.providerPanics)
+
+	writeHistogram(w, "gateway_request_duration_seconds", "Gateway request duration in seconds.", providerLabel, r.requestDuration)
+	writeHistogram(w, "gateway_provider_duration_seconds", "Provider call duration in seconds.", providerLabel, r.providerDuration)
+}
+
+func newHistogram(buckets []float64) histogram {
+	return histogram{
+		buckets: buckets,
+		counts:  make([]uint64, len(buckets)),
+	}
+}
+
+func (h *histogram) observe(value float64) {
+	h.count++
+	h.sum += value
+	for i, bound := range h.buckets {
+		if value <= bound {
+			h.counts[i]++
+		}
+	}
+}
+
+func writeHistogram(w io.Writer, name, help, providerLabel string, h histogram) {
+	fmt.Fprintf(w, "# HELP %s %s\n", name, help)
+	fmt.Fprintf(w, "# TYPE %s histogram\n", name)
+	for i, bound := range h.buckets {
+		fmt.Fprintf(
+			w,
+			"%s_bucket{%s,le=%q} %d\n",
+			name,
+			providerLabel,
+			formatFloat(bound),
+			h.counts[i],
+		)
+	}
+	fmt.Fprintf(w, "%s_bucket{%s,le=%q} %d\n", name, providerLabel, "+Inf", h.count)
+	fmt.Fprintf(w, "%s_sum{%s} %s\n", name, providerLabel, formatFloat(h.sum))
+	fmt.Fprintf(w, "%s_count{%s} %d\n", name, providerLabel, h.count)
+}
+
+func formatFloat(value float64) string {
+	return strconv.FormatFloat(value, 'f', -1, 64)
+}

@@ -7,6 +7,7 @@ import (
 	"flag"
 	"gateway"
 	"gateway/adapter"
+	"gateway/metrics"
 	"io"
 	"log"
 	"net/http"
@@ -29,6 +30,15 @@ const (
 	minProviderConnectTimeout = 2 * time.Second
 	maxProviderConnectTimeout = 10 * time.Second
 )
+
+var latencyBuckets = []time.Duration{
+	100 * time.Millisecond,
+	250 * time.Millisecond,
+	500 * time.Millisecond,
+	1 * time.Second,
+	2500 * time.Millisecond,
+	5 * time.Second,
+}
 
 type fileConfig struct {
 	SMSProvider                      string `json:"smsProvider"`
@@ -57,17 +67,23 @@ func main() {
 	providerTimeout := time.Duration(cfg.SMSProviderTimeoutSeconds) * time.Second
 	providerConnectTimeout := time.Duration(cfg.SMSProviderConnectTimeoutSeconds) * time.Second
 	var providerCall gateway.ProviderCall
+	var providerName string
 	switch cfg.SMSProvider {
 	case "default":
 		providerCall = adapter.DefaultProviderCall(cfg.SMSProviderURL, providerConnectTimeout)
+		providerName = adapter.DefaultProviderName
 	case "model":
 		providerCall = adapter.ModelProviderCall(cfg.SMSProviderURL, providerConnectTimeout)
+		providerName = adapter.ModelProviderName
 	default:
 		log.Fatalf("smsProvider must be one of: default, model")
 	}
+
+	metricsRegistry := metrics.New(providerName, latencyBuckets)
 	gw, err := gateway.New(gateway.Config{
 		ProviderCall:    providerCall,
 		ProviderTimeout: providerTimeout,
+		Metrics:         metricsRegistry,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -75,7 +91,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:    cfg.Addr,
-		Handler: newMux(gw),
+		Handler: newMux(gw, metricsRegistry),
 	}
 
 	errCh := make(chan error, 1)
@@ -166,14 +182,16 @@ func loadConfig(path string) (fileConfig, error) {
 	return cfg, nil
 }
 
-func newMux(gw *gateway.SMSGateway) *http.ServeMux {
+func newMux(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sms/send", handleSMSSend(gw))
+	mux.HandleFunc("/sms/send", handleSMSSend(gw, metricsRegistry))
+	mux.HandleFunc("/metrics", handleMetrics(metricsRegistry))
 	return mux
 }
 
-func handleSMSSend(gw *gateway.SMSGateway) http.HandlerFunc {
+func handleSMSSend(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
 		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 
 		dec := json.NewDecoder(r.Body)
@@ -184,6 +202,9 @@ func handleSMSSend(gw *gateway.SMSGateway) http.HandlerFunc {
 				Status: "rejected",
 				Reason: "invalid_request",
 			})
+			if metricsRegistry != nil {
+				metricsRegistry.ObserveRequest("rejected", "invalid_request", time.Since(start))
+			}
 			return
 		}
 		if err := dec.Decode(&struct{}{}); err != io.EOF {
@@ -192,6 +213,9 @@ func handleSMSSend(gw *gateway.SMSGateway) http.HandlerFunc {
 				Status: "rejected",
 				Reason: "invalid_request",
 			})
+			if metricsRegistry != nil {
+				metricsRegistry.ObserveRequest("rejected", "invalid_request", time.Since(start))
+			}
 			return
 		}
 
@@ -220,6 +244,20 @@ func handleSMSSend(gw *gateway.SMSGateway) http.HandlerFunc {
 			resp.GatewayMessageID,
 		)
 		writeSMSResponse(w, status, resp)
+		if metricsRegistry != nil {
+			metricsRegistry.ObserveRequest(resp.Status, resp.Reason, time.Since(start))
+		}
+	}
+}
+
+func handleMetrics(metricsRegistry *metrics.Registry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if metricsRegistry == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		metricsRegistry.WritePrometheus(w)
 	}
 }
 

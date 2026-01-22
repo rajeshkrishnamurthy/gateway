@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"gateway/metrics"
 	"log"
 	"sync"
 	"time"
@@ -39,6 +40,7 @@ type SMSResponse struct {
 type Config struct {
 	ProviderCall    ProviderCall
 	ProviderTimeout time.Duration
+	Metrics         *metrics.Registry
 }
 
 // ProviderCall invokes the configured SMS provider.
@@ -53,9 +55,11 @@ type ProviderResult struct {
 // SMSGateway is the core SMS gateway service.
 type SMSGateway struct {
 	mu              sync.Mutex
+	// Gateway is submission-only with no durable state, so idempotency is limited to in-flight requests.
 	inflight        map[string]struct{}
 	providerCall    ProviderCall
 	providerTimeout time.Duration
+	metrics         *metrics.Registry
 }
 
 // New constructs an SMSGateway instance.
@@ -70,6 +74,7 @@ func New(cfg Config) (*SMSGateway, error) {
 		inflight:        make(map[string]struct{}),
 		providerCall:    cfg.ProviderCall,
 		providerTimeout: cfg.ProviderTimeout,
+		metrics:         cfg.Metrics,
 	}, nil
 }
 
@@ -125,16 +130,22 @@ func (g *SMSGateway) SendSMS(ctx context.Context, req SMSRequest) (SMSResponse, 
 	providerCtx, cancel := context.WithTimeout(ctx, g.providerTimeout)
 	defer cancel()
 
+	providerStart := time.Now()
+	panicRecovered := false
 	providerResult, err := func() (providerResult ProviderResult, err error) {
 		// Normalize provider panics to provider_failure to keep the gateway contract stable.
 		defer func() {
 			if r := recover(); r != nil {
+				panicRecovered = true
 				log.Printf("sms provider panic referenceId=%q panic=%v", req.ReferenceID, r)
 				err = errors.New("provider panic")
 			}
 		}()
 		return g.providerCall(providerCtx, req)
 	}()
+	if g.metrics != nil {
+		g.metrics.ObserveProviderCall(time.Since(providerStart), err, panicRecovered)
+	}
 	if err != nil {
 		status := "rejected"
 		reason := "provider_failure"
