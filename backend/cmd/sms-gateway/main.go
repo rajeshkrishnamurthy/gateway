@@ -55,6 +55,9 @@ type fileConfig struct {
 	SMSProvider                      string `json:"smsProvider"`
 	Addr                             string `json:"addr"`
 	SMSProviderURL                   string `json:"smsProviderUrl"`
+	SMSProviderVersion               string `json:"smsProviderVersion"`
+	SMSProviderServiceName           string `json:"smsProviderServiceName"`
+	SMSProviderSenderID              string `json:"smsProviderSenderId"`
 	SMSProviderTimeoutSeconds        int    `json:"smsProviderTimeoutSeconds"`
 	SMSProviderConnectTimeoutSeconds int    `json:"smsProviderConnectTimeoutSeconds"`
 }
@@ -150,17 +153,9 @@ func main() {
 
 	providerTimeout := time.Duration(cfg.SMSProviderTimeoutSeconds) * time.Second
 	providerConnectTimeout := time.Duration(cfg.SMSProviderConnectTimeoutSeconds) * time.Second
-	var providerCall gateway.ProviderCall
-	var providerName string
-	switch cfg.SMSProvider {
-	case "default":
-		providerCall = adapter.DefaultProviderCall(cfg.SMSProviderURL, providerConnectTimeout)
-		providerName = adapter.DefaultProviderName
-	case "model":
-		providerCall = adapter.ModelProviderCall(cfg.SMSProviderURL, providerConnectTimeout)
-		providerName = adapter.ModelProviderName
-	default:
-		log.Fatalf("smsProvider must be one of: default, model")
+	providerCall, providerName, err := providerFromConfig(cfg, providerConnectTimeout)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	metricsRegistry := metrics.New(providerName, latencyBuckets)
@@ -232,7 +227,21 @@ func loadConfig(path string) (fileConfig, error) {
 	}
 	defer file.Close()
 
-	dec := json.NewDecoder(file)
+	var filtered bytes.Buffer
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		filtered.WriteString(line)
+		filtered.WriteByte('\n')
+	}
+	if err := scanner.Err(); err != nil {
+		return fileConfig{}, err
+	}
+
+	dec := json.NewDecoder(&filtered)
 	dec.DisallowUnknownFields()
 	var cfg fileConfig
 	if err := dec.Decode(&cfg); err != nil {
@@ -250,9 +259,9 @@ func loadConfig(path string) (fileConfig, error) {
 		cfg.SMSProvider = "default"
 	}
 	switch cfg.SMSProvider {
-	case "default", "model":
+	case "default", "model", "sms24x7", "smskarix":
 	default:
-		return fileConfig{}, errors.New("smsProvider must be one of: default, model")
+		return fileConfig{}, errors.New("smsProvider must be one of: default, model, sms24x7, smskarix")
 	}
 	if strings.TrimSpace(cfg.SMSProviderURL) == "" {
 		return fileConfig{}, errors.New("smsProviderUrl is required")
@@ -269,6 +278,53 @@ func loadConfig(path string) (fileConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+func providerFromConfig(cfg fileConfig, providerConnectTimeout time.Duration) (gateway.ProviderCall, string, error) {
+	switch cfg.SMSProvider {
+	case "default":
+		return adapter.DefaultProviderCall(cfg.SMSProviderURL, providerConnectTimeout), adapter.DefaultProviderName, nil
+	case "model":
+		return adapter.ModelProviderCall(cfg.SMSProviderURL, providerConnectTimeout), adapter.ModelProviderName, nil
+	case "sms24x7":
+		apiKey := strings.TrimSpace(os.Getenv("SMS24X7_API_KEY"))
+		if apiKey == "" {
+			return nil, "", errors.New("SMS24X7_API_KEY is required for sms24x7")
+		}
+		if strings.TrimSpace(cfg.SMSProviderServiceName) == "" {
+			return nil, "", errors.New("smsProviderServiceName is required for sms24x7")
+		}
+		if strings.TrimSpace(cfg.SMSProviderSenderID) == "" {
+			return nil, "", errors.New("smsProviderSenderId is required for sms24x7")
+		}
+		return adapter.Sms24X7ProviderCall(
+			cfg.SMSProviderURL,
+			apiKey,
+			cfg.SMSProviderServiceName,
+			cfg.SMSProviderSenderID,
+			providerConnectTimeout,
+		), adapter.Sms24X7ProviderName, nil
+	case "smskarix":
+		apiKey := strings.TrimSpace(os.Getenv("SMSKARIX_API_KEY"))
+		if apiKey == "" {
+			return nil, "", errors.New("SMSKARIX_API_KEY is required for smskarix")
+		}
+		if strings.TrimSpace(cfg.SMSProviderVersion) == "" {
+			return nil, "", errors.New("smsProviderVersion is required for smskarix")
+		}
+		if strings.TrimSpace(cfg.SMSProviderSenderID) == "" {
+			return nil, "", errors.New("smsProviderSenderId is required for smskarix")
+		}
+		return adapter.SmsKarixProviderCall(
+			cfg.SMSProviderURL,
+			apiKey,
+			cfg.SMSProviderVersion,
+			cfg.SMSProviderSenderID,
+			providerConnectTimeout,
+		), adapter.SmsKarixProviderName, nil
+	default:
+		return nil, "", errors.New("smsProvider must be one of: default, model, sms24x7, smskarix")
+	}
 }
 
 func newMux(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry, ui *uiServer) *http.ServeMux {

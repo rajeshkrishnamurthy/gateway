@@ -94,7 +94,7 @@ Rules:
 - Internal errors must be mapped to user-facing messages before rendering.
 
 ## HTTP Handler Placement (Strict)
-- All HTTP route registration and handlers must live in `main.go` under `cmd/gateway/`.
+- All HTTP route registration and handlers must live in `main.go` under `cmd/sms-gateway/`.
 - Core packages must not depend on `net/http`.
 - UI handlers must be registered alongside other HTTP routes, not in core packages.
 

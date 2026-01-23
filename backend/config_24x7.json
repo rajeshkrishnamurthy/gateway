@@ -1,0 +1,14 @@
+{
+  # Any line can be commented with a hash.
+
+  # server level configs
+  "smsProvider": "model",
+  "addr": ":8080",
+  "smsProviderConnectTimeoutSeconds": 2,
+
+  # provider specific configs
+  "smsProviderTimeoutSeconds": 30
+  "smsProviderUrl": "http://localhost:9091/sms/send",
+  "smsProviderServiceName": "dummy-service",
+  "smsProviderSenderId": "dummy-sender",
+}

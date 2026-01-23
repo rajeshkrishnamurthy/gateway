@@ -95,7 +95,7 @@ Gateway loads its configuration from `config.json` in the working directory:
 Start the gateway:
 
 ```sh
-go run ./cmd/gateway
+go run ./cmd/sms-gateway
 ```
 
 Send requests through the gateway (use a fresh referenceId each time):
@@ -135,6 +135,38 @@ Configure the gateway to use it:
   "smsProvider": "model",
   "addr": ":8080",
   "smsProviderUrl": "http://localhost:9091/sms/send",
+  "smsProviderConnectTimeoutSeconds": 2,
+  "smsProviderTimeoutSeconds": 30
+}
+```
+
+## sms24x7 provider
+
+Set the API key via `SMS24X7_API_KEY` in the environment (do not put secrets in `config.json`).
+
+```json
+{
+  "smsProvider": "sms24x7",
+  "addr": ":8080",
+  "smsProviderUrl": "https://api.example.com/sms/send",
+  "smsProviderServiceName": "your-service",
+  "smsProviderSenderId": "your-sender",
+  "smsProviderConnectTimeoutSeconds": 2,
+  "smsProviderTimeoutSeconds": 30
+}
+```
+
+## smskarix provider
+
+Set the API key via `SMSKARIX_API_KEY` in the environment (do not put secrets in `config.json`).
+
+```json
+{
+  "smsProvider": "smskarix",
+  "addr": ":8080",
+  "smsProviderUrl": "https://api.example.com/sms/send",
+  "smsProviderVersion": "v1",
+  "smsProviderSenderId": "your-sender",
   "smsProviderConnectTimeoutSeconds": 2,
   "smsProviderTimeoutSeconds": 30
 }

@@ -49,3 +49,13 @@ Must not log:
 ## Tests
 - Adapter-specific tests live alongside adapters in this folder.
 - Test request translation, response parsing, and mapping to ProviderResult.
+
+## Adding a Provider
+- Copy `model_provider_call.go` verbatim and rename the file and builder function.
+- Make the smallest possible edits to support the provider’s request format, response interpretation, and provider name.
+- Preserve logging structure and fields; only substitute provider-specific values. Do not add or remove logged data.
+- Add adapter-level tests alongside the implementation (request mapping, response handling, and outcome mapping).
+- Map provider outcomes deterministically:
+  - return `ProviderResult` only when the submission outcome is certain
+  - return `error` for any ambiguous, transport, or provider failure
+- Wire the provider in `cmd/sms-gateway/main.go`; provider-specific constructor arguments are expected and must remain confined to bootstrap wiring.
