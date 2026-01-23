@@ -54,7 +54,9 @@ Must not log:
 - Copy `model_provider_call.go` verbatim and rename the file and builder function.
 - Make the smallest possible edits to support the provider’s request format, response interpretation, and provider name.
 - Preserve logging structure and fields; only substitute provider-specific values. Do not add or remove logged data.
+- URL-encode dynamic query parameter values when building provider URLs.
 - Add adapter-level tests alongside the implementation (request mapping, response handling, and outcome mapping).
+- Read provider secrets (API keys) from provider-specific environment variables in `cmd/sms-gateway/main.go`, not from `config.json`.
 - Map provider outcomes deterministically:
   - return `ProviderResult` only when the submission outcome is certain
   - return `error` for any ambiguous, transport, or provider failure

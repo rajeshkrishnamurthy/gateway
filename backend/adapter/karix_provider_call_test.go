@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -17,11 +18,13 @@ func TestSmsKarixProviderRequestMapping(t *testing.T) {
 	var gotMethod string
 	var gotPath string
 	var gotQuery url.Values
+	var gotRawQuery string
 	var gotBody []byte
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
 		gotQuery = r.URL.Query()
+		gotRawQuery = r.URL.RawQuery
 
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -38,7 +41,7 @@ func TestSmsKarixProviderRequestMapping(t *testing.T) {
 	resp, err := providerCall(context.Background(), gateway.SMSRequest{
 		ReferenceID: "ref-1",
 		To:          "15551234567",
-		Message:     "hello",
+		Message:     "hello world",
 	})
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
@@ -71,8 +74,11 @@ func TestSmsKarixProviderRequestMapping(t *testing.T) {
 	if gotQuery.Get("send") != "sender-1" {
 		t.Fatalf("expected send sender-1, got %q", gotQuery.Get("send"))
 	}
-	if gotQuery.Get("text") != "hello" {
-		t.Fatalf("expected text hello, got %q", gotQuery.Get("text"))
+	if gotQuery.Get("text") != "hello world" {
+		t.Fatalf("expected text hello world, got %q", gotQuery.Get("text"))
+	}
+	if strings.Contains(gotRawQuery, " ") {
+		t.Fatalf("expected encoded query string, got %q", gotRawQuery)
 	}
 	if len(gotBody) != 0 {
 		t.Fatalf("expected empty request body, got %q", string(gotBody))

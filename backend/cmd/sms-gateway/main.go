@@ -259,9 +259,9 @@ func loadConfig(path string) (fileConfig, error) {
 		cfg.SMSProvider = "default"
 	}
 	switch cfg.SMSProvider {
-	case "default", "model", "sms24x7", "smskarix":
+	case "default", "model", "sms24x7", "smskarix", "smsinfobip":
 	default:
-		return fileConfig{}, errors.New("smsProvider must be one of: default, model, sms24x7, smskarix")
+		return fileConfig{}, errors.New("smsProvider must be one of: default, model, sms24x7, smskarix, smsinfobip")
 	}
 	if strings.TrimSpace(cfg.SMSProviderURL) == "" {
 		return fileConfig{}, errors.New("smsProviderUrl is required")
@@ -322,8 +322,22 @@ func providerFromConfig(cfg fileConfig, providerConnectTimeout time.Duration) (g
 			cfg.SMSProviderSenderID,
 			providerConnectTimeout,
 		), adapter.SmsKarixProviderName, nil
+	case "smsinfobip":
+		apiKey := strings.TrimSpace(os.Getenv("SMSINFOBIP_API_KEY"))
+		if apiKey == "" {
+			return nil, "", errors.New("SMSINFOBIP_API_KEY is required for smsinfobip")
+		}
+		if strings.TrimSpace(cfg.SMSProviderSenderID) == "" {
+			return nil, "", errors.New("smsProviderSenderId is required for smsinfobip")
+		}
+		return adapter.SmsInfoBipProviderCall(
+			cfg.SMSProviderURL,
+			apiKey,
+			cfg.SMSProviderSenderID,
+			providerConnectTimeout,
+		), adapter.SmsInfoBipProviderName, nil
 	default:
-		return nil, "", errors.New("smsProvider must be one of: default, model, sms24x7, smskarix")
+		return nil, "", errors.New("smsProvider must be one of: default, model, sms24x7, smskarix, smsinfobip")
 	}
 }
 

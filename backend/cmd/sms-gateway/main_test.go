@@ -116,6 +116,7 @@ func TestProviderFromConfigSms24X7WithEnv(t *testing.T) {
 func TestProviderFromConfigModelNoEnv(t *testing.T) {
 	t.Setenv("SMS24X7_API_KEY", "")
 	t.Setenv("SMSKARIX_API_KEY", "")
+	t.Setenv("SMSINFOBIP_API_KEY", "")
 	cfg := fileConfig{
 		SMSProvider:    "model",
 		SMSProviderURL: "http://localhost",
@@ -163,5 +164,37 @@ func TestProviderFromConfigSmsKarixWithEnv(t *testing.T) {
 	}
 	if providerName != adapter.SmsKarixProviderName {
 		t.Fatalf("expected provider name %q, got %q", adapter.SmsKarixProviderName, providerName)
+	}
+}
+
+func TestProviderFromConfigSmsInfoBipMissingEnv(t *testing.T) {
+	t.Setenv("SMSINFOBIP_API_KEY", "")
+	cfg := fileConfig{
+		SMSProvider:         "smsinfobip",
+		SMSProviderURL:      "http://localhost",
+		SMSProviderSenderID: "sender",
+	}
+	_, _, err := providerFromConfig(cfg, time.Second)
+	if err == nil {
+		t.Fatal("expected error for missing SMSINFOBIP_API_KEY")
+	}
+}
+
+func TestProviderFromConfigSmsInfoBipWithEnv(t *testing.T) {
+	t.Setenv("SMSINFOBIP_API_KEY", "secret")
+	cfg := fileConfig{
+		SMSProvider:         "smsinfobip",
+		SMSProviderURL:      "http://localhost",
+		SMSProviderSenderID: "sender",
+	}
+	providerCall, providerName, err := providerFromConfig(cfg, time.Second)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if providerCall == nil {
+		t.Fatal("expected providerCall")
+	}
+	if providerName != adapter.SmsInfoBipProviderName {
+		t.Fatalf("expected provider name %q, got %q", adapter.SmsInfoBipProviderName, providerName)
 	}
 }

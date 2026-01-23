@@ -10,10 +10,12 @@
   # sms24x7-only settings.
   "smsProviderServiceName": "dummy-service",
 
-  # sms24x7 + smskarix settings.
+  # sms24x7 + smskarix + smsinfobip settings.
   "smsProviderSenderId": "dummy-sender",
 
   # smskarix requires SMSKARIX_API_KEY in the environment.
   # smskarix-only settings.
   "smsProviderVersion": "v1"
+
+  # smsinfobip requires SMSINFOBIP_API_KEY in the environment.
 }

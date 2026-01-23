@@ -77,7 +77,7 @@ Latency histograms share buckets at 0.1s, 0.25s, 0.5s, 1s, 2.5s, and 5s.
 Start the fake provider:
 
 ```sh
-go run ./cmd/fakeprovider -addr :9090
+go run ./cmd/fake-provider/fakeprovider -addr :9090
 ```
 
 Gateway loads its configuration from `config.json` in the working directory:
@@ -123,7 +123,7 @@ curl -i -X POST http://localhost:8080/sms/send \
 Start the model provider:
 
 ```sh
-go run ./cmd/modelprovider -addr :9091
+go run ./cmd/fake-provider/modelprovider -addr :9091
 ```
 
 Note: the model provider intentionally adds a random 50ms–2s delay for manual latency testing (TODO: remove).
@@ -166,6 +166,21 @@ Set the API key via `SMSKARIX_API_KEY` in the environment (do not put secrets in
   "addr": ":8080",
   "smsProviderUrl": "https://api.example.com/sms/send",
   "smsProviderVersion": "v1",
+  "smsProviderSenderId": "your-sender",
+  "smsProviderConnectTimeoutSeconds": 2,
+  "smsProviderTimeoutSeconds": 30
+}
+```
+
+## smsinfobip provider
+
+Set the API key via `SMSINFOBIP_API_KEY` in the environment (do not put secrets in `config.json`).
+
+```json
+{
+  "smsProvider": "smsinfobip",
+  "addr": ":8080",
+  "smsProviderUrl": "https://api.example.com/sms/send",
   "smsProviderSenderId": "your-sender",
   "smsProviderConnectTimeoutSeconds": 2,
   "smsProviderTimeoutSeconds": 30

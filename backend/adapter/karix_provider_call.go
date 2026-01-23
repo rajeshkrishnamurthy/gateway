@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -42,13 +43,18 @@ func SmsKarixProviderCall(providerURL, apiKey, version, senderID string, connect
 				separator = "&"
 			}
 		}
+		encodedVersion := url.QueryEscape(version)
+		encodedAPIKey := url.QueryEscape(apiKey)
+		encodedRecipient := url.QueryEscape(req.To)
+		encodedSenderID := url.QueryEscape(senderID)
+		encodedMessage := url.QueryEscape(req.Message)
 		requestURL := providerURL + separator +
-			"ver=" + version +
-			"&key=" + apiKey +
+			"ver=" + encodedVersion +
+			"&key=" + encodedAPIKey +
 			"&encrpt=0" +
-			"&dest=" + req.To +
-			"&send=" + senderID +
-			"&text=" + req.Message
+			"&dest=" + encodedRecipient +
+			"&send=" + encodedSenderID +
+			"&text=" + encodedMessage
 
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 		if err != nil {
