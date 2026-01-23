@@ -2,20 +2,7 @@
   # Any line can be commented with a hash.
   "smsProvider": "model",
   "addr": ":8080",
-  "smsProviderUrl": "http://localhost:9091/sms/send",
+  "smsProviderUrl": "http://localhost:8080/sms/send",
   "smsProviderConnectTimeoutSeconds": 2,
   "smsProviderTimeoutSeconds": 30,
-
-  # sms24x7 requires SMS24X7_API_KEY in the environment.
-  # sms24x7-only settings.
-  "smsProviderServiceName": "dummy-service",
-
-  # sms24x7 + smskarix + smsinfobip settings.
-  "smsProviderSenderId": "dummy-sender",
-
-  # smskarix requires SMSKARIX_API_KEY in the environment.
-  # smskarix-only settings.
-  "smsProviderVersion": "v1"
-
-  # smsinfobip requires SMSINFOBIP_API_KEY in the environment.
 }
