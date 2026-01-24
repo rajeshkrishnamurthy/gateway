@@ -1,0 +1,11 @@
+# Scrape configuration for the gateway /metrics endpoint.
+# Update the target port if your gateway runs on a different address.
+
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: "gateway"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["localhost:8080", "localhost:8081"]

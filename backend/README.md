@@ -1,4 +1,4 @@
-## REST contract
+## SMS REST contract
 
 Gateway request (JSON):
 
@@ -19,6 +19,35 @@ Gateway response (JSON):
   "status": "accepted|rejected",
   "gatewayMessageId": "string (present when accepted)",
   "reason": "invalid_request|duplicate_reference|invalid_recipient|invalid_message|provider_failure (present when rejected)"
+}
+```
+
+
+## Push REST contract
+
+Gateway request (JSON):
+
+```json
+{
+  "referenceId": "string",
+  "token": "string",
+  "title": "string (optional)",
+  "body": "string (optional)",
+  "data": {"key": "value"} (optional),
+  "tenantId": "string (optional)"
+}
+```
+
+At least one of `title`, `body`, or `data` must be present.
+
+Gateway response (JSON):
+
+```json
+{
+  "referenceId": "string",
+  "status": "accepted|rejected",
+  "gatewayMessageId": "string (present when accepted)",
+  "reason": "invalid_request|duplicate_reference|provider_failure (present when rejected)"
 }
 ```
 
@@ -71,6 +100,26 @@ Submission behavior can be reconstructed using the client-supplied referenceId.
 Gateway exposes Prometheus metrics at `/metrics`.
 Metrics are low-cardinality and use the adapter provider name for the `provider` label.
 Latency histograms share buckets at 0.1s, 0.25s, 0.5s, 1s, 2.5s, and 5s.
+
+## Prometheus quick start
+
+Use the sample config at `conf/prometheus.yml` to scrape the gateway.
+
+Start the gateway (adjust the config/port if needed):
+
+```sh
+go run ./cmd/sms-gateway -config conf/config.json
+```
+
+Start Prometheus with the sample config:
+
+```sh
+./prometheus --config.file=conf/prometheus.yml
+```
+
+Open the Prometheus UI at `http://localhost:9090` and run the query `gateway_requests_total`.
+If you send a request through the gateway, the counter should increment.
+
 
 ## Local fake provider + gateway smoke test
 
@@ -186,6 +235,28 @@ Set the API key via `SMSINFOBIP_API_KEY` in the environment (do not put secrets 
   "smsProviderTimeoutSeconds": 30
 }
 ```
+
+## push gateway (FCM)
+
+Set `PUSH_FCM_CREDENTIAL_JSON_PATH` (preferred) or `PUSH_FCM_BEARER_TOKEN` in the environment (do not put secrets in `config.json`). Optional: `PUSH_FCM_SCOPE_URL` overrides the default scope.
+
+```json
+{
+  "pushProvider": "fcm",
+  "addr": ":8081",
+  "pushProviderUrl": "https://fcm.googleapis.com/v1/projects/enc-scb/messages:send",
+  "pushProviderConnectTimeoutSeconds": 2,
+  "pushProviderTimeoutSeconds": 30
+}
+```
+
+Start the push gateway:
+
+```sh
+go run ./cmd/push-gateway -config conf/config_push.json
+```
+
+
 
 Final note
 Gateway is a real-time submission bridge.

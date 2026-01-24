@@ -4,7 +4,14 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,7 +21,9 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -38,6 +47,11 @@ const (
 )
 
 const (
+	defaultFCMScopeURL = "https://www.googleapis.com/auth/firebase.messaging"
+	tokenRefreshSkew   = 2 * time.Minute
+)
+
+const (
 	uiLogCapacity    = 1000
 	uiLogResultLimit = 200
 )
@@ -52,14 +66,11 @@ var latencyBuckets = []time.Duration{
 }
 
 type fileConfig struct {
-	SMSProvider                      string `json:"smsProvider"`
-	Addr                             string `json:"addr"`
-	SMSProviderURL                   string `json:"smsProviderUrl"`
-	SMSProviderVersion               string `json:"smsProviderVersion"`
-	SMSProviderServiceName           string `json:"smsProviderServiceName"`
-	SMSProviderSenderID              string `json:"smsProviderSenderId"`
-	SMSProviderTimeoutSeconds        int    `json:"smsProviderTimeoutSeconds"`
-	SMSProviderConnectTimeoutSeconds int    `json:"smsProviderConnectTimeoutSeconds"`
+	PushProvider                      string `json:"pushProvider"`
+	Addr                              string `json:"addr"`
+	PushProviderURL                   string `json:"pushProviderUrl"`
+	PushProviderTimeoutSeconds        int    `json:"pushProviderTimeoutSeconds"`
+	PushProviderConnectTimeoutSeconds int    `json:"pushProviderConnectTimeoutSeconds"`
 }
 
 type uiTemplates struct {
@@ -167,15 +178,15 @@ func main() {
 	logBuffer := newLogBuffer(uiLogCapacity)
 	log.SetOutput(io.MultiWriter(os.Stderr, logBuffer))
 
-	providerTimeout := time.Duration(cfg.SMSProviderTimeoutSeconds) * time.Second
-	providerConnectTimeout := time.Duration(cfg.SMSProviderConnectTimeoutSeconds) * time.Second
+	providerTimeout := time.Duration(cfg.PushProviderTimeoutSeconds) * time.Second
+	providerConnectTimeout := time.Duration(cfg.PushProviderConnectTimeoutSeconds) * time.Second
 	providerCall, providerName, err := providerFromConfig(cfg, providerConnectTimeout)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	metricsRegistry := metrics.New(providerName, latencyBuckets)
-	gw, err := gateway.New(gateway.Config{
+	gw, err := gateway.NewPushGateway(gateway.PushConfig{
 		ProviderCall:    providerCall,
 		ProviderTimeout: providerTimeout,
 		Metrics:         metricsRegistry,
@@ -203,13 +214,13 @@ func main() {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
 	log.Printf(
-		"listening on %s configPath=%q smsProvider=%q smsProviderUrl=%q smsProviderTimeoutSeconds=%d smsProviderConnectTimeoutSeconds=%d",
+		"listening on %s configPath=%q pushProvider=%q pushProviderUrl=%q pushProviderTimeoutSeconds=%d pushProviderConnectTimeoutSeconds=%d",
 		cfg.Addr,
 		*configPath,
-		cfg.SMSProvider,
-		cfg.SMSProviderURL,
-		cfg.SMSProviderTimeoutSeconds,
-		cfg.SMSProviderConnectTimeoutSeconds,
+		cfg.PushProvider,
+		cfg.PushProviderURL,
+		cfg.PushProviderTimeoutSeconds,
+		cfg.PushProviderConnectTimeoutSeconds,
 	)
 
 	select {
@@ -270,100 +281,267 @@ func loadConfig(path string) (fileConfig, error) {
 	if strings.TrimSpace(cfg.Addr) == "" {
 		return fileConfig{}, errors.New("addr is required")
 	}
-	cfg.SMSProvider = strings.TrimSpace(cfg.SMSProvider)
-	if cfg.SMSProvider == "" {
-		cfg.SMSProvider = "default"
+	cfg.PushProvider = strings.TrimSpace(cfg.PushProvider)
+	if cfg.PushProvider == "" {
+		cfg.PushProvider = "fcm"
 	}
-	switch cfg.SMSProvider {
-	case "default", "model", "sms24x7", "smskarix", "smsinfobip":
+	switch cfg.PushProvider {
+	case "fcm":
 	default:
-		return fileConfig{}, errors.New("smsProvider must be one of: default, model, sms24x7, smskarix, smsinfobip")
+		return fileConfig{}, errors.New("pushProvider must be one of: fcm")
 	}
-	if strings.TrimSpace(cfg.SMSProviderURL) == "" {
-		return fileConfig{}, errors.New("smsProviderUrl is required")
+	if strings.TrimSpace(cfg.PushProviderURL) == "" {
+		return fileConfig{}, errors.New("pushProviderUrl is required")
 	}
-	if cfg.SMSProviderTimeoutSeconds < 15 || cfg.SMSProviderTimeoutSeconds > 60 {
-		return fileConfig{}, errors.New("smsProviderTimeoutSeconds must be between 15 and 60")
+	if cfg.PushProviderTimeoutSeconds < 15 || cfg.PushProviderTimeoutSeconds > 60 {
+		return fileConfig{}, errors.New("pushProviderTimeoutSeconds must be between 15 and 60")
 	}
-	if cfg.SMSProviderConnectTimeoutSeconds == 0 {
-		cfg.SMSProviderConnectTimeoutSeconds = int(minProviderConnectTimeout / time.Second)
+	if cfg.PushProviderConnectTimeoutSeconds == 0 {
+		cfg.PushProviderConnectTimeoutSeconds = int(minProviderConnectTimeout / time.Second)
 	}
-	connectTimeout := time.Duration(cfg.SMSProviderConnectTimeoutSeconds) * time.Second
+	connectTimeout := time.Duration(cfg.PushProviderConnectTimeoutSeconds) * time.Second
 	if connectTimeout < minProviderConnectTimeout || connectTimeout > maxProviderConnectTimeout {
-		return fileConfig{}, errors.New("smsProviderConnectTimeoutSeconds must be between 2 and 10")
+		return fileConfig{}, errors.New("pushProviderConnectTimeoutSeconds must be between 2 and 10")
 	}
 
 	return cfg, nil
 }
 
-func providerFromConfig(cfg fileConfig, providerConnectTimeout time.Duration) (gateway.ProviderCall, string, error) {
-	switch cfg.SMSProvider {
-	case "default":
-		return adapter.DefaultProviderCall(cfg.SMSProviderURL, providerConnectTimeout), adapter.DefaultProviderName, nil
-	case "model":
-		return adapter.ModelProviderCall(cfg.SMSProviderURL, providerConnectTimeout), adapter.ModelProviderName, nil
-	case "sms24x7":
-		apiKey := strings.TrimSpace(os.Getenv("SMS24X7_API_KEY"))
-		if apiKey == "" {
-			return nil, "", errors.New("SMS24X7_API_KEY is required for sms24x7")
+func providerFromConfig(cfg fileConfig, providerConnectTimeout time.Duration) (gateway.PushProviderCall, string, error) {
+	switch cfg.PushProvider {
+	case "fcm":
+		credentialPath := strings.TrimSpace(os.Getenv("PUSH_FCM_CREDENTIAL_JSON_PATH"))
+		if credentialPath != "" {
+			scope := strings.TrimSpace(os.Getenv("PUSH_FCM_SCOPE_URL"))
+			tokenSource, err := newFCMTokenSource(credentialPath, scope, providerConnectTimeout)
+			if err != nil {
+				return nil, "", err
+			}
+			return adapter.PushFCMProviderCallWithTokenSource(
+				cfg.PushProviderURL,
+				tokenSource.Token,
+				providerConnectTimeout,
+			), adapter.PushFCMProviderName, nil
 		}
-		if strings.TrimSpace(cfg.SMSProviderServiceName) == "" {
-			return nil, "", errors.New("smsProviderServiceName is required for sms24x7")
+		bearerToken := strings.TrimSpace(os.Getenv("PUSH_FCM_BEARER_TOKEN"))
+		if bearerToken == "" {
+			return nil, "", errors.New("PUSH_FCM_CREDENTIAL_JSON_PATH or PUSH_FCM_BEARER_TOKEN is required for fcm")
 		}
-		if strings.TrimSpace(cfg.SMSProviderSenderID) == "" {
-			return nil, "", errors.New("smsProviderSenderId is required for sms24x7")
-		}
-		return adapter.Sms24X7ProviderCall(
-			cfg.SMSProviderURL,
-			apiKey,
-			cfg.SMSProviderServiceName,
-			cfg.SMSProviderSenderID,
+		return adapter.PushFCMProviderCall(
+			cfg.PushProviderURL,
+			bearerToken,
 			providerConnectTimeout,
-		), adapter.Sms24X7ProviderName, nil
-	case "smskarix":
-		apiKey := strings.TrimSpace(os.Getenv("SMSKARIX_API_KEY"))
-		if apiKey == "" {
-			return nil, "", errors.New("SMSKARIX_API_KEY is required for smskarix")
-		}
-		if strings.TrimSpace(cfg.SMSProviderVersion) == "" {
-			return nil, "", errors.New("smsProviderVersion is required for smskarix")
-		}
-		if strings.TrimSpace(cfg.SMSProviderSenderID) == "" {
-			return nil, "", errors.New("smsProviderSenderId is required for smskarix")
-		}
-		return adapter.SmsKarixProviderCall(
-			cfg.SMSProviderURL,
-			apiKey,
-			cfg.SMSProviderVersion,
-			cfg.SMSProviderSenderID,
-			providerConnectTimeout,
-		), adapter.SmsKarixProviderName, nil
-	case "smsinfobip":
-		apiKey := strings.TrimSpace(os.Getenv("SMSINFOBIP_API_KEY"))
-		if apiKey == "" {
-			return nil, "", errors.New("SMSINFOBIP_API_KEY is required for smsinfobip")
-		}
-		if strings.TrimSpace(cfg.SMSProviderSenderID) == "" {
-			return nil, "", errors.New("smsProviderSenderId is required for smsinfobip")
-		}
-		return adapter.SmsInfoBipProviderCall(
-			cfg.SMSProviderURL,
-			apiKey,
-			cfg.SMSProviderSenderID,
-			providerConnectTimeout,
-		), adapter.SmsInfoBipProviderName, nil
+		), adapter.PushFCMProviderName, nil
 	default:
-		return nil, "", errors.New("smsProvider must be one of: default, model, sms24x7, smskarix, smsinfobip")
+		return nil, "", errors.New("pushProvider must be one of: fcm")
 	}
 }
 
-func newMux(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry, ui *uiServer) *http.ServeMux {
+type serviceAccountJSON struct {
+	ClientEmail string `json:"client_email"`
+	PrivateKey  string `json:"private_key"`
+	TokenURI    string `json:"token_uri"`
+}
+
+type serviceAccount struct {
+	email      string
+	privateKey *rsa.PrivateKey
+	tokenURI   string
+}
+
+type fcmTokenSource struct {
+	mu      sync.Mutex
+	token   string
+	expiry  time.Time
+	account serviceAccount
+	scope   string
+	client  *http.Client
+}
+
+type tokenResponse struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   int64  `json:"expires_in"`
+	TokenType   string `json:"token_type"`
+}
+
+type jwtClaims struct {
+	Iss   string `json:"iss"`
+	Scope string `json:"scope"`
+	Aud   string `json:"aud"`
+	Exp   int64  `json:"exp"`
+	Iat   int64  `json:"iat"`
+}
+
+func newFCMTokenSource(credentialsPath, scope string, connectTimeout time.Duration) (*fcmTokenSource, error) {
+	raw, err := os.ReadFile(credentialsPath)
+	if err != nil {
+		return nil, err
+	}
+	var creds serviceAccountJSON
+	if err := json.Unmarshal(raw, &creds); err != nil {
+		return nil, err
+	}
+	email := strings.TrimSpace(creds.ClientEmail)
+	if email == "" {
+		return nil, errors.New("client_email is required")
+	}
+	privateKey := strings.TrimSpace(creds.PrivateKey)
+	if privateKey == "" {
+		return nil, errors.New("private_key is required")
+	}
+	tokenURI := strings.TrimSpace(creds.TokenURI)
+	if tokenURI == "" {
+		return nil, errors.New("token_uri is required")
+	}
+	key, err := parsePrivateKey(privateKey)
+	if err != nil {
+		return nil, err
+	}
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		scope = defaultFCMScopeURL
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = (&net.Dialer{
+		Timeout:   connectTimeout,
+		KeepAlive: 30 * time.Second,
+	}).DialContext
+	client := &http.Client{Transport: transport}
+
+	return &fcmTokenSource{
+		account: serviceAccount{
+			email:      email,
+			privateKey: key,
+			tokenURI:   tokenURI,
+		},
+		scope:  scope,
+		client: client,
+	}, nil
+}
+
+func (s *fcmTokenSource) Token(ctx context.Context) (string, error) {
+	s.mu.Lock()
+	if s.token != "" && time.Until(s.expiry) > tokenRefreshSkew {
+		token := s.token
+		s.mu.Unlock()
+		return token, nil
+	}
+	s.mu.Unlock()
+
+	token, expiry, err := s.fetchToken(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	s.mu.Lock()
+	s.token = token
+	s.expiry = expiry
+	s.mu.Unlock()
+
+	return token, nil
+}
+
+func (s *fcmTokenSource) fetchToken(ctx context.Context) (string, time.Time, error) {
+	now := time.Now()
+	assertion, err := buildJWT(s.account, s.scope, now)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+
+	form := url.Values{}
+	form.Set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
+	form.Set("assertion", assertion)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.account.tokenURI, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return "", time.Time{}, fmt.Errorf("token request status=%d", resp.StatusCode)
+	}
+
+	var token tokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&token); err != nil {
+		return "", time.Time{}, err
+	}
+	if token.AccessToken == "" {
+		return "", time.Time{}, errors.New("token response missing access_token")
+	}
+	if token.ExpiresIn <= 0 {
+		return "", time.Time{}, errors.New("token response missing expires_in")
+	}
+	expiry := now.Add(time.Duration(token.ExpiresIn) * time.Second)
+	return token.AccessToken, expiry, nil
+}
+
+func buildJWT(account serviceAccount, scope string, now time.Time) (string, error) {
+	header, err := json.Marshal(map[string]string{
+		"alg": "RS256",
+		"typ": "JWT",
+	})
+	if err != nil {
+		return "", err
+	}
+	claims := jwtClaims{
+		Iss:   account.email,
+		Scope: scope,
+		Aud:   account.tokenURI,
+		Exp:   now.Add(time.Hour).Unix(),
+		Iat:   now.Unix(),
+	}
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return "", err
+	}
+
+	encoder := base64.RawURLEncoding
+	headerPart := encoder.EncodeToString(header)
+	payloadPart := encoder.EncodeToString(payload)
+	signingInput := headerPart + "." + payloadPart
+
+	hash := sha256.Sum256([]byte(signingInput))
+	signature, err := rsa.SignPKCS1v15(rand.Reader, account.privateKey, crypto.SHA256, hash[:])
+	if err != nil {
+		return "", err
+	}
+	signaturePart := encoder.EncodeToString(signature)
+	return signingInput + "." + signaturePart, nil
+}
+
+func parsePrivateKey(raw string) (*rsa.PrivateKey, error) {
+	block, _ := pem.Decode([]byte(raw))
+	if block == nil {
+		return nil, errors.New("private key PEM not found")
+	}
+	if key, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+		rsaKey, ok := key.(*rsa.PrivateKey)
+		if !ok {
+			return nil, errors.New("private key is not RSA")
+		}
+		return rsaKey, nil
+	}
+	if key, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+		return key, nil
+	}
+	return nil, errors.New("private key parse failed")
+}
+
+func newMux(gw *gateway.PushGateway, metricsRegistry *metrics.Registry, ui *uiServer) *http.ServeMux {
 	mux := http.NewServeMux()
 	var sendResult *template.Template
 	if ui != nil {
 		sendResult = ui.templates.sendResult
 	}
-	mux.HandleFunc("/sms/send", handleSMSSend(gw, metricsRegistry, sendResult))
+	mux.HandleFunc("/push/send", handlePushSend(gw, metricsRegistry, sendResult))
 	mux.HandleFunc("/metrics", handleMetrics(metricsRegistry))
 	if ui != nil {
 		mux.Handle("/ui/static/", http.StripPrefix("/ui/static/", http.FileServer(http.Dir(ui.staticDir))))
@@ -375,16 +553,16 @@ func newMux(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry, ui *uiSer
 	return mux
 }
 
-func handleSMSSend(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry, sendResult *template.Template) http.HandlerFunc {
+func handlePushSend(gw *gateway.PushGateway, metricsRegistry *metrics.Registry, sendResult *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 
 		dec := json.NewDecoder(r.Body)
-		var req gateway.SMSRequest
+		var req gateway.PushRequest
 		if err := dec.Decode(&req); err != nil {
-			log.Printf("sms decision referenceId=%q status=rejected reason=invalid_request source=validation detail=decode_error err=%v", "", err)
-			writeSMSSendResponse(w, r, http.StatusBadRequest, gateway.SMSResponse{
+			log.Printf("push decision referenceId=%q status=rejected reason=invalid_request source=validation detail=decode_error err=%v", "", err)
+			writePushSendResponse(w, r, http.StatusBadRequest, gateway.PushResponse{
 				Status: "rejected",
 				Reason: "invalid_request",
 			}, sendResult)
@@ -394,8 +572,8 @@ func handleSMSSend(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry, se
 			return
 		}
 		if err := dec.Decode(&struct{}{}); err != io.EOF {
-			log.Printf("sms decision referenceId=%q status=rejected reason=invalid_request source=validation detail=trailing_json", req.ReferenceID)
-			writeSMSSendResponse(w, r, http.StatusBadRequest, gateway.SMSResponse{
+			log.Printf("push decision referenceId=%q status=rejected reason=invalid_request source=validation detail=trailing_json", req.ReferenceID)
+			writePushSendResponse(w, r, http.StatusBadRequest, gateway.PushResponse{
 				Status: "rejected",
 				Reason: "invalid_request",
 			}, sendResult)
@@ -405,31 +583,26 @@ func handleSMSSend(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry, se
 			return
 		}
 
-		resp, err := gw.SendSMS(r.Context(), req)
+		resp, err := gw.SendPush(r.Context(), req)
 		status := http.StatusOK
 		if err != nil && errors.Is(err, gateway.ErrInvalidRequest) {
 			status = http.StatusBadRequest
 		}
 		source := "provider_result"
 		if err != nil && errors.Is(err, gateway.ErrInvalidRequest) {
-			switch resp.Reason {
-			case "invalid_recipient", "invalid_message":
-				source = "provider_result"
-			default:
-				source = "validation"
-			}
+			source = "validation"
 		} else if resp.Reason == "provider_failure" {
 			source = "provider_failure"
 		}
 		log.Printf(
-			"sms decision referenceId=%q status=%q reason=%q source=%s gatewayMessageId=%q",
+			"push decision referenceId=%q status=%q reason=%q source=%s gatewayMessageId=%q",
 			resp.ReferenceID,
 			resp.Status,
 			resp.Reason,
 			source,
 			resp.GatewayMessageID,
 		)
-		writeSMSSendResponse(w, r, status, resp, sendResult)
+		writePushSendResponse(w, r, status, resp, sendResult)
 		if metricsRegistry != nil {
 			metricsRegistry.ObserveRequest(resp.Status, resp.Reason, time.Since(start))
 		}
@@ -447,7 +620,7 @@ func handleMetrics(metricsRegistry *metrics.Registry) http.HandlerFunc {
 	}
 }
 
-func writeSMSResponse(w http.ResponseWriter, status int, resp gateway.SMSResponse) {
+func writePushResponse(w http.ResponseWriter, status int, resp gateway.PushResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
@@ -455,19 +628,19 @@ func writeSMSResponse(w http.ResponseWriter, status int, resp gateway.SMSRespons
 	}
 }
 
-func writeSMSSendResponse(w http.ResponseWriter, r *http.Request, status int, resp gateway.SMSResponse, sendResult *template.Template) {
+func writePushSendResponse(w http.ResponseWriter, r *http.Request, status int, resp gateway.PushResponse, sendResult *template.Template) {
 	if sendResult != nil && isHTMX(r) {
 		fragmentStatus := status
 		if fragmentStatus >= http.StatusBadRequest {
 			fragmentStatus = http.StatusOK
 		}
-		writeSMSResponseFragment(w, fragmentStatus, resp, sendResult)
+		writePushResponseFragment(w, fragmentStatus, resp, sendResult)
 		return
 	}
-	writeSMSResponse(w, status, resp)
+	writePushResponse(w, status, resp)
 }
 
-func writeSMSResponseFragment(w http.ResponseWriter, status int, resp gateway.SMSResponse, tmpl *template.Template) {
+func writePushResponseFragment(w http.ResponseWriter, status int, resp gateway.PushResponse, tmpl *template.Template) {
 	fragment, err := executeTemplate(tmpl, "send_result.tmpl", resp)
 	if err != nil {
 		log.Printf("render send result: %v", err)
@@ -497,12 +670,12 @@ func newUIServer(providerName string, providerTimeout time.Duration, metricsRegi
 	return &uiServer{
 		templates:       templates,
 		staticDir:       filepath.Join(uiDir, "static"),
-		consoleTitle:    "SMS Gateway Console",
-		sendTitle:       "Send Test SMS",
-		sendNavLabel:    "Send Test SMS",
-		sendEndpoint:    "/sms/send",
-		isPush:          false,
-		gatewayName:     "sms-gateway",
+		consoleTitle:    "Push Gateway Console",
+		sendTitle:       "Send Test Push",
+		sendNavLabel:    "Send Test Push",
+		sendEndpoint:    "/push/send",
+		isPush:          true,
+		gatewayName:     "push-gateway",
 		version:         version,
 		providerName:    providerName,
 		providerTimeout: providerTimeout,
@@ -754,8 +927,6 @@ func parseMetrics(text string) metricsView {
 		reasonOrder := []string{
 			"invalid_request",
 			"duplicate_reference",
-			"invalid_recipient",
-			"invalid_message",
 			"provider_failure",
 		}
 		for _, reason := range reasonOrder {
@@ -895,21 +1066,21 @@ func summarizeLogEntries(entries []logEntry) (string, string, string) {
 	var finalOutcome string
 	for i := len(entries) - 1; i >= 0; i-- {
 		line := entries[i].Line
-		if finalOutcome == "" && strings.Contains(line, "sms decision") {
+		if finalOutcome == "" && strings.Contains(line, "push decision") {
 			status := parseQuotedField(line, "status")
 			reason := parseQuotedField(line, "reason")
 			finalOutcome = formatFinalOutcome(status, reason, line)
 		}
-		if providerDecision == "" && strings.Contains(line, "sms provider decision") {
+		if providerDecision == "" && strings.Contains(line, "push provider decision") {
 			providerDecision = line
 			if mappingDecision == "" {
 				mappingDecision = parseField(line, "mapped")
 			}
 		}
-		if providerDecision == "" && strings.Contains(line, "sms provider response") {
+		if providerDecision == "" && strings.Contains(line, "push provider response") {
 			providerDecision = line
 		}
-		if providerDecision == "" && strings.Contains(line, "sms provider error") {
+		if providerDecision == "" && strings.Contains(line, "push provider error") {
 			providerDecision = line
 		}
 		if mappingDecision == "" && strings.Contains(line, "mapped=") {

@@ -1,8 +1,8 @@
 <main class="page">
   <header class="page-header">
     <div class="brand">
-      <h1>Send Test SMS</h1>
-      <p>Manual submission to the gateway. This mirrors POST /sms/send and returns the raw response.</p>
+      <h1>{{.SendTitle}}</h1>
+      <p>Manual submission to the gateway. This mirrors POST {{.SendEndpoint}} and returns the raw response.</p>
     </div>
     {{template "nav.tmpl" .}}
   </header>
@@ -10,11 +10,25 @@
   <section class="panel">
     <h2>Request</h2>
     <p class="muted">No retry, no send again, no history. Use referenceId values you can trace in logs.</p>
-    <form class="form-grid" method="post" action="/sms/send" hx-post="/sms/send" hx-target="#send-result" hx-swap="innerHTML" hx-ext="json-enc">
+    <form class="form-grid" method="post" action="{{.SendEndpoint}}" hx-post="{{.SendEndpoint}}" hx-target="#send-result" hx-swap="innerHTML" hx-ext="json-enc">
       <div class="field">
         <label for="referenceId">referenceId</label>
         <input id="referenceId" name="referenceId" type="text" required />
       </div>
+      {{if .IsPush}}
+      <div class="field">
+        <label for="token">token</label>
+        <input id="token" name="token" type="text" required />
+      </div>
+      <div class="field">
+        <label for="title">title</label>
+        <input id="title" name="title" type="text" />
+      </div>
+      <div class="field">
+        <label for="body">body</label>
+        <textarea id="body" name="body" required></textarea>
+      </div>
+      {{else}}
       <div class="field">
         <label for="to">to</label>
         <input id="to" name="to" type="text" required />
@@ -23,6 +37,7 @@
         <label for="message">message</label>
         <textarea id="message" name="message" required></textarea>
       </div>
+      {{end}}
       <div class="field">
         <label for="tenantId">tenantId</label>
         <input id="tenantId" name="tenantId" type="text" />
