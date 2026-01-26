@@ -1,0 +1,158 @@
+<section id="health-services" hx-get="/ui/services" hx-trigger="every 5m" hx-swap="outerHTML">
+  {{if .Notice}}
+  <div class="note">{{.Notice}}</div>
+  {{end}}
+
+  <section class="panel health-panel">
+    <div class="health-header">
+      <h2>Services</h2>
+    </div>
+
+    <div class="table-section">
+      <table class="table health-table">
+        <thead>
+          <tr>
+            <th>Component</th>
+            <th>Instances</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Services}}
+          {{ $service := . }}
+          <tr class="health-row">
+            <td class="health-name">{{.Label}}</td>
+            <td>
+              <div class="health-instances">
+                {{if not .Instances}}
+                <span class="muted">No instances configured.</span>
+                {{end}}
+                {{range .Instances}}
+                <div class="health-chip {{.StatusClass}}">
+                  <span class="health-chip-name">{{.Name}}</span>
+                  <span class="health-chip-port">:{{.Port}}</span>
+                  <span class="health-chip-status">{{.Status}}</span>
+                </div>
+                {{end}}
+              </div>
+            </td>
+            <td>
+              <div class="health-actions">
+                {{if not $service.Instances}}
+                <span class="muted">No instances.</span>
+                {{else}}
+                {{if $service.SingleToggle}}
+                <div class="health-action-row">
+                  <span class="health-action-label">Process</span>
+                  {{if $service.ToggleIsUp}}
+                  {{if $service.HasStop}}
+                  <form hx-post="/ui/services/stop" hx-target="#health-services" hx-swap="outerHTML">
+                    <input type="hidden" name="serviceId" value="{{$service.ID}}">
+                    <input type="hidden" name="instanceName" value="{{$service.ToggleInstanceName}}">
+                    <button class="toggle is-on" type="submit" role="switch" aria-checked="true">On</button>
+                  </form>
+                  {{else}}
+                  <button class="toggle is-on" type="button" disabled>On</button>
+                  {{end}}
+                  {{else}}
+                  {{if $service.HasStart}}
+                  <form hx-post="/ui/services/start" hx-target="#health-services" hx-swap="outerHTML">
+                    <input type="hidden" name="serviceId" value="{{$service.ID}}">
+                    <input type="hidden" name="instanceName" value="{{$service.ToggleInstanceName}}">
+                    <button class="toggle is-off" type="submit" role="switch" aria-checked="false">Off</button>
+                  </form>
+                  {{else}}
+                  <button class="toggle is-off" type="button" disabled>Off</button>
+                  {{end}}
+                  {{end}}
+                </div>
+                {{else}}
+                {{range .Instances}}
+                <div class="health-action-row">
+                  <span class="health-action-label">{{.Name}}</span>
+                  {{if .IsUp}}
+                  {{if $service.HasStop}}
+                  <form hx-post="/ui/services/stop" hx-target="#health-services" hx-swap="outerHTML">
+                    <input type="hidden" name="serviceId" value="{{$service.ID}}">
+                    <input type="hidden" name="instanceName" value="{{.Name}}">
+                    <button class="toggle is-on" type="submit" role="switch" aria-checked="true">On</button>
+                  </form>
+                  {{else}}
+                  <button class="toggle is-on" type="button" disabled>On</button>
+                  {{end}}
+                  {{else}}
+                  {{if $service.HasStart}}
+                  <form hx-post="/ui/services/start" hx-target="#health-services" hx-swap="outerHTML">
+                    <input type="hidden" name="serviceId" value="{{$service.ID}}">
+                    <input type="hidden" name="instanceName" value="{{.Name}}">
+                    <button class="toggle is-off" type="submit" role="switch" aria-checked="false">Off</button>
+                  </form>
+                  {{else}}
+                  <button class="toggle is-off" type="button" disabled>Off</button>
+                  {{end}}
+                  {{end}}
+                </div>
+                {{end}}
+                {{end}}
+                {{if not $service.HasStart}}
+                {{if not $service.HasStop}}
+                <span class="muted">Actions not configured.</span>
+                {{end}}
+                {{end}}
+                {{end}}
+              </div>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel health-panel health-ui-panel">
+    <div class="health-header">
+      <h2>Interfaces</h2>
+      <p class="muted">Direct links to web consoles.</p>
+    </div>
+
+    {{ $hasUI := false }}
+    <div class="health-ui-grid">
+      {{range .Services}}
+      {{ $service := . }}
+      {{if eq $service.ID "haproxy"}}
+      {{ $hasUI = true }}
+      <div class="ui-card">
+        <span class="ui-card-title">{{$service.Label}}</span>
+        <span class="ui-card-meta">Load balancer endpoints</span>
+        <div class="ui-card-links">
+          {{range $service.Instances}}
+          {{if .UIURL}}
+          <a class="ui-card-link" href="{{.UIURL}}" target="_blank" rel="noopener">{{.Name}}</a>
+          {{end}}
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+      {{end}}
+
+      {{range .Services}}
+      {{ $service := . }}
+      {{if ne $service.ID "haproxy"}}
+      {{range .Instances}}
+      {{if .UIURL}}
+      {{ $hasUI = true }}
+      <a class="ui-card" href="{{.UIURL}}" target="_blank" rel="noopener" aria-label="Open {{$service.Label}} {{.Name}} UI">
+        <span class="ui-card-title">{{$service.Label}}</span>
+        <span class="ui-card-meta">{{.Name}}</span>
+        <span class="ui-card-action">Open</span>
+      </a>
+      {{end}}
+      {{end}}
+      {{end}}
+      {{end}}
+    </div>
+    {{if not $hasUI}}
+    <p class="muted">No UI links configured.</p>
+    {{end}}
+  </section>
+</section>

@@ -1,0 +1,18 @@
+<main class="page health-console">
+  <header class="page-header">
+    <div class="brand">
+      <h1>{{.Title}}</h1>
+      <p>Visibility across gateways and supporting tools. Start and stop actions use predefined commands.</p>
+    </div>
+    <nav class="nav" aria-label="Primary">
+      <a href="/ui" hx-get="/ui" hx-target="#ui-root" hx-swap="innerHTML" hx-push-url="true">Overview</a>
+      <button id="theme-toggle" class="toggle theme-toggle is-off" type="button" role="switch" aria-checked="false">Light</button>
+    </nav>
+  </header>
+
+  <section class="note">
+    Status checks use TCP connectivity to each configured service. Relative paths are resolved from the health console working directory.
+  </section>
+
+  {{template "health_services.tmpl" .Services}}
+</main>
