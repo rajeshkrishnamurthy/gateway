@@ -6,7 +6,9 @@
     </div>
     <nav class="nav" aria-label="Primary">
       <a href="/ui" hx-get="/ui" hx-target="#ui-root" hx-swap="innerHTML" hx-push-url="true">Overview</a>
+      {{if .ShowThemeToggle}}
       <button id="theme-toggle" class="toggle theme-toggle is-off" type="button" role="switch" aria-checked="false">Light</button>
+      {{end}}
     </nav>
   </header>
 

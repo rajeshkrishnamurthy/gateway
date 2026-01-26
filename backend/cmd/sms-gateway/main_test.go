@@ -14,7 +14,8 @@ func TestLoadConfigAllowsHashComments(t *testing.T) {
   "smsProvider": "model",
   "smsProviderUrl": "http://localhost:9091/sms/send",
   "smsProviderConnectTimeoutSeconds": 2,
-  "smsProviderTimeoutSeconds": 30
+  "smsProviderTimeoutSeconds": 30,
+  "grafanaDashboardUrl": "http://localhost:3000/d/gateway-overview-sms"
 }
   # trailing comment
 `
@@ -32,6 +33,9 @@ func TestLoadConfigAllowsHashComments(t *testing.T) {
 	}
 	if cfg.SMSProviderURL != "http://localhost:9091/sms/send" {
 		t.Fatalf("expected smsProviderUrl, got %q", cfg.SMSProviderURL)
+	}
+	if cfg.GrafanaDashboardURL != "http://localhost:3000/d/gateway-overview-sms" {
+		t.Fatalf("expected grafanaDashboardUrl, got %q", cfg.GrafanaDashboardURL)
 	}
 }
 

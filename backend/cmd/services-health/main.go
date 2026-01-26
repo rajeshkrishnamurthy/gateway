@@ -75,8 +75,9 @@ type uiServer struct {
 }
 
 type overviewView struct {
-	Title    string
-	Services servicesView
+	Title           string
+	ShowThemeToggle bool
+	Services        servicesView
 }
 
 type servicesView struct {
@@ -234,9 +235,12 @@ func (u *uiServer) handleOverview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	embedValue := strings.TrimSpace(r.URL.Query().Get("embed"))
+	embed := strings.EqualFold(embedValue, "1") || strings.EqualFold(embedValue, "true")
 	view := overviewView{
-		Title:    "Command Center",
-		Services: buildServicesView(u.config, "", nil),
+		Title:           "Command Center",
+		ShowThemeToggle: !embed,
+		Services:        buildServicesView(u.config, "", nil),
 	}
 	u.renderPage(w, r, u.templates.overview, "health_overview.tmpl", view)
 }

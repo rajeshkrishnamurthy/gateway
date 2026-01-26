@@ -1,14 +1,8 @@
 {
   # Any line can be commented with a hash.
-
-  # server level configs
   "smsProvider": "model",
+  "smsProviderUrl": "http://model-provider:9091/sms/send",
   "smsProviderConnectTimeoutSeconds": 2,
-
-  # provider specific configs
   "smsProviderTimeoutSeconds": 30,
-  "smsProviderUrl": "http://localhost:9091/sms/send",
-  "smsProviderServiceName": "dummy-service",
-  "smsProviderSenderId": "dummy-sender",
   "grafanaDashboardUrl": "http://localhost:3000/d/gateway-overview-sms"
 }

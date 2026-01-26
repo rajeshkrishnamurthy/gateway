@@ -1,0 +1,26 @@
+<div class="topbar portal-topbar">
+  <div class="topbar-brand">
+    <svg class="topbar-logo" viewBox="0 0 48 24" aria-hidden="true" focusable="false">
+      <path d="M2 18c6-10 12-14 22-14s16 4 22 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M8 18v-6M40 18v-6M16 18v-4M32 18v-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M2 18h44" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <span class="topbar-title">Setu</span>
+  </div>
+  <nav class="nav portal-nav" aria-label="Admin portal">
+    <a class="{{if eq .Active "overview"}}is-active{{end}}" href="/ui">Portal</a>
+    {{if .ShowSMS}}
+    <a class="{{if eq .Active "sms"}}is-active{{end}}" href="/sms/ui">SMS Gateway</a>
+    {{end}}
+    {{if .ShowPush}}
+    <a class="{{if eq .Active "push"}}is-active{{end}}" href="/push/ui">Push Gateway</a>
+    {{end}}
+    {{if .ShowHAProxy}}
+    <a class="{{if eq .Active "haproxy"}}is-active{{end}}" href="/haproxy">HAProxy</a>
+    {{end}}
+    {{if .ShowCommandCenter}}
+    <a class="{{if eq .Active "command-center"}}is-active{{end}}" href="/command-center/ui">Command Center</a>
+    {{end}}
+    <button id="theme-toggle" class="toggle theme-toggle is-off" type="button" role="switch" aria-checked="false">Light</button>
+  </nav>
+</div>

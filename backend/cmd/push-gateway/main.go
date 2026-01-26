@@ -73,6 +73,7 @@ type fileConfig struct {
 	PushProviderURL                   string `json:"pushProviderUrl"`
 	PushProviderTimeoutSeconds        int    `json:"pushProviderTimeoutSeconds"`
 	PushProviderConnectTimeoutSeconds int    `json:"pushProviderConnectTimeoutSeconds"`
+	GrafanaDashboardURL               string `json:"grafanaDashboardUrl"`
 }
 
 type uiTemplates struct {
@@ -202,7 +203,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ui, err := newUIServer(providerName, providerTimeout, metricsRegistry, logBuffer, startTime)
+	ui, err := newUIServer(providerName, providerTimeout, cfg.GrafanaDashboardURL, metricsRegistry, logBuffer, startTime)
 	if err != nil {
 		log.Printf("ui disabled: %v", err)
 	}
@@ -221,13 +222,14 @@ func main() {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
 	log.Printf(
-		"listening on %s configPath=%q pushProvider=%q pushProviderUrl=%q pushProviderTimeoutSeconds=%d pushProviderConnectTimeoutSeconds=%d",
+		"listening on %s configPath=%q pushProvider=%q pushProviderUrl=%q pushProviderTimeoutSeconds=%d pushProviderConnectTimeoutSeconds=%d grafanaDashboardUrl=%q",
 		*listenAddr,
 		*configPath,
 		cfg.PushProvider,
 		cfg.PushProviderURL,
 		cfg.PushProviderTimeoutSeconds,
 		cfg.PushProviderConnectTimeoutSeconds,
+		cfg.GrafanaDashboardURL,
 	)
 
 	select {
@@ -662,7 +664,7 @@ func isHTMX(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true"
 }
 
-func newUIServer(providerName string, providerTimeout time.Duration, metricsRegistry *metrics.Registry, logBuffer *logBuffer, startTime time.Time) (*uiServer, error) {
+func newUIServer(providerName string, providerTimeout time.Duration, grafanaDashboardURL string, metricsRegistry *metrics.Registry, logBuffer *logBuffer, startTime time.Time) (*uiServer, error) {
 	uiDir, err := findUIDir()
 	if err != nil {
 		return nil, err
@@ -671,7 +673,7 @@ func newUIServer(providerName string, providerTimeout time.Duration, metricsRegi
 	if err != nil {
 		return nil, err
 	}
-	metricsURL := strings.TrimSpace(os.Getenv("GRAFANA_DASHBOARD_URL"))
+	metricsURL := strings.TrimSpace(grafanaDashboardURL)
 	if metricsURL == "" {
 		metricsURL = defaultGrafanaDashboardURL
 	}

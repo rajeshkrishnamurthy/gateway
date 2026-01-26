@@ -1,3 +1,19 @@
+## Codex maintenance notes
+
+This repo is maintained by Codex across sessions. Before changing behavior, read the closest `AGENTS.md` and follow `PLANS.md` for non-trivial work.
+
+Start with these operational docs:
+- `backend/cmd/services-health/README.md` for the Command Center.
+- `backend/cmd/admin-portal/README.md` for the Admin Portal.
+
+Prefer explicit, minimal changes that preserve the current submission-only contracts.
+
+## MVP posture (Docker-only)
+
+For the MVP, Setu is operated via Docker Compose only. Non-Docker run paths are intentionally out of scope to keep dev/devops overhead low.
+
+Configs and infra files under `conf/` are kept to leave the door open for a future non-Docker deployment, but they are not maintained for direct host execution today.
+
 ## SMS REST contract
 
 Gateway request (JSON):
@@ -106,37 +122,16 @@ Latency histograms share buckets at 0.1s, 0.25s, 0.5s, 1s, 2.5s, and 5s.
 
 The gateway stack is intentionally small and explicit:
 
-- Gateways: `cmd/sms-gateway` and `cmd/push-gateway` are single-provider, submission-only processes. Provider semantics live in `config*.json`; bind address is supplied via `-addr`. Secrets are provided via environment variables only.
-- HAProxy: optional load-balancer in `conf/haproxy.cfg` that fronts stable ports and routes to multiple gateway instances. Gateways remain unaware of peers.
-- Prometheus: scrapes gateway instances directly using `conf/prometheus.yml` (do not scrape HAProxy). Jobs separate SMS vs push.
-- Grafana: provisioned dashboards in `conf/grafana/dashboards`. The gateway UI Metrics link points to `GRAFANA_DASHBOARD_URL` (defaults to the SMS/push dashboard URLs).
-
-## Prometheus quick start
-
-Use the sample config at `conf/prometheus.yml` to scrape the gateway.
-
-Start the gateway (adjust the config/port if needed):
-
-```sh
-go run ./cmd/sms-gateway -config conf/config.json -addr :8080
-```
-
-Start Prometheus with the sample config:
-
-```sh
-./prometheus --config.file=conf/prometheus.yml
-```
-
-Open the Prometheus UI at `http://localhost:9090` and run the query `gateway_requests_total`.
-If you send a request through the gateway, the counter should increment.
-
-
+- Gateways: `cmd/sms-gateway` and `cmd/push-gateway` run as containers. Provider semantics and instance-agnostic settings (like `grafanaDashboardUrl`) live in `conf/config_docker.json` and `conf/config_push_docker.json`. Secrets are provided via environment variables only.
+- HAProxy: Docker Compose uses `conf/haproxy_docker.cfg` to front stable ports and route to multiple gateway instances. Gateways remain unaware of peers.
+- Prometheus: Docker Compose uses `conf/prometheus_docker.yml` to scrape gateway instances directly (do not scrape HAProxy). Jobs separate SMS vs push.
+- Grafana: provisioned dashboards live under `conf/grafana/dashboards`. The gateway UI Metrics link points to `grafanaDashboardUrl` from the gateway config (defaults to the SMS/push dashboard URLs).
 
 ## Services health console
 
-The services health console is a standalone UI for checking gateway and tool status (up/down) and running start/stop commands defined in `conf/services_health.json`.
+The services health console is a host-run UI for checking container status (up/down) and running Docker Compose start/stop commands defined in `conf/services_health.json`.
 
-Start the console:
+Start the console from `backend/`:
 
 ```sh
 go run ./cmd/services-health -config conf/services_health.json -addr :8070
@@ -148,82 +143,45 @@ Notes:
 - Status checks use TCP connectivity to each configured `addr`.
 - Start/stop actions execute the command arrays from the config with `{config}`, `{addr}`, and `{port}` placeholder substitution.
 - Relative paths are resolved from the health console working directory.
+- Docker Compose must be available on the host PATH.
 
-## Grafana quick start
+## Docker Compose quick start
 
-Grafana is optional and uses the existing Prometheus instance. Provisioning files live in `conf/grafana/`.
-
-Start Grafana (Docker):
-
-```sh
-docker run --rm -p 3000:3000 \
-  -v "$PWD/conf/grafana/provisioning:/etc/grafana/provisioning" \
-  -v "$PWD/conf/grafana/dashboards:/var/lib/grafana/dashboards" \
-  grafana/grafana:latest
-```
-
-Open `http://localhost:3000/d/gateway-overview-sms` for SMS and `http://localhost:3000/d/gateway-overview-push` for push.
-
-Set `GRAFANA_DASHBOARD_URL` to point the gateway UI Metrics link at your Grafana instance.
-
-## Load balancing (HAProxy)
-
-HAProxy can provide a stable client endpoint while routing to multiple gateway instances. Gateways stay unchanged and run on distinct local ports.
-
-Example (three SMS + three push instances):
+For a cross-platform dev stack, use Docker Compose from the repo root:
 
 ```sh
-# SMS gateways
-
-go run ./cmd/sms-gateway -config conf/config.json -addr :18080
-
-go run ./cmd/sms-gateway -config conf/config.json -addr :18081
-
-go run ./cmd/sms-gateway -config conf/config.json -addr :18082
-
-# Push gateways
-
-go run ./cmd/push-gateway -config conf/config_push.json -addr :19080
-
-go run ./cmd/push-gateway -config conf/config_push.json -addr :19081
-
-go run ./cmd/push-gateway -config conf/config_push.json -addr :19082
+docker compose up
 ```
 
-Start HAProxy (fronts stable ports `:8080` for SMS and `:8081` for push):
+Then open:
+
+- Admin portal: `http://localhost:8090/ui`
+- Grafana: `http://localhost:3000` (default credentials `admin` / `admin`)
+- Prometheus: `http://localhost:9090`
+
+Compose uses:
+
+- `conf/config_docker.json` and `conf/config_push_docker.json` for gateways.
+- `conf/admin_portal_docker.json` for the admin portal (Command Center hosted on `host.docker.internal:8070`).
+- `conf/prometheus_docker.yml` and `conf/haproxy_docker.cfg` for infra.
+
+If you want the Command Center inside the admin portal while running Docker Compose, start it on the host from `backend/`:
 
 ```sh
-haproxy -f conf/haproxy.cfg
+go run ./cmd/services-health -config conf/services_health.json -addr :8070
 ```
 
-Prometheus should scrape the gateway instances directly, not HAProxy. Update `conf/prometheus.yml` targets and reload Prometheus after scaling.
+The Docker admin portal config points at `http://host.docker.internal:8070` for the Command Center URL.
 
-## Local fake provider + gateway smoke test
+The gateway containers run `go run` using the `golang:tip` image to match the `go 1.25` module declaration. If you want a pinned Go version, update the image tags and ensure they support the `go.mod` version.
 
-Start the fake provider:
+## Scaling gateways (Docker Compose)
 
-```sh
-go run ./cmd/fake-provider/fakeprovider -addr :9090
-```
+To run more instances, add services in `docker-compose.yml` and update `conf/haproxy_docker.cfg` and `conf/prometheus_docker.yml` to include the new backends and scrape targets. Keep host ports unique when exposing additional instances.
 
-Gateway loads its configuration from `config.json` in the working directory:
+## Gateway smoke test (Docker)
 
-```json
-{
-  "smsProvider": "default",
-  "smsProviderUrl": "http://localhost:9090/sms/send",
-  "smsProviderConnectTimeoutSeconds": 2,
-  "smsProviderTimeoutSeconds": 30
-}
-```
-
-Start the gateway:
-
-```sh
-go run ./cmd/sms-gateway -addr :8080
-```
-
-Send requests through the gateway (use a fresh referenceId each time):
+Send requests through the SMS gateway (use a fresh referenceId each time):
 
 ```sh
 curl -i -X POST http://localhost:8080/sms/send \
@@ -245,28 +203,23 @@ curl -i -X POST http://localhost:8080/sms/send \
 
 ## Model provider (adapter demo)
 
-Start the model provider:
-
-```sh
-go run ./cmd/fake-provider/modelprovider -addr :9091
-```
-
-Note: the model provider intentionally adds a random 50ms–2s delay for manual latency testing (TODO: remove).
-
-Configure the gateway to use it:
+Docker Compose runs the model provider container on `http://model-provider:9091`. The SMS docker config already points to it:
 
 ```json
 {
   "smsProvider": "model",
-  "smsProviderUrl": "http://localhost:9091/sms/send",
+  "smsProviderUrl": "http://model-provider:9091/sms/send",
   "smsProviderConnectTimeoutSeconds": 2,
-  "smsProviderTimeoutSeconds": 30
+  "smsProviderTimeoutSeconds": 30,
+  "grafanaDashboardUrl": "http://localhost:3000/d/gateway-overview-sms"
 }
 ```
 
+Note: the model provider intentionally adds a random 50ms-2s delay for manual latency testing (TODO: remove).
+
 ## sms24x7 provider
 
-Set the API key via `SMS24X7_API_KEY` in the environment (do not put secrets in `config.json`).
+Set the API key via `SMS24X7_API_KEY` in the environment (do not put secrets in config files). Update `conf/config_docker.json` to use this provider.
 
 ```json
 {
@@ -281,7 +234,7 @@ Set the API key via `SMS24X7_API_KEY` in the environment (do not put secrets in 
 
 ## smskarix provider
 
-Set the API key via `SMSKARIX_API_KEY` in the environment (do not put secrets in `config.json`).
+Set the API key via `SMSKARIX_API_KEY` in the environment (do not put secrets in config files). Update `conf/config_docker.json` to use this provider.
 
 ```json
 {
@@ -296,7 +249,7 @@ Set the API key via `SMSKARIX_API_KEY` in the environment (do not put secrets in
 
 ## smsinfobip provider
 
-Set the API key via `SMSINFOBIP_API_KEY` in the environment (do not put secrets in `config.json`).
+Set the API key via `SMSINFOBIP_API_KEY` in the environment (do not put secrets in config files). Update `conf/config_docker.json` to use this provider.
 
 ```json
 {
@@ -310,29 +263,21 @@ Set the API key via `SMSINFOBIP_API_KEY` in the environment (do not put secrets 
 
 ## push gateway (FCM)
 
-Set `PUSH_FCM_CREDENTIAL_JSON_PATH` (preferred) or `PUSH_FCM_BEARER_TOKEN` in the environment (do not put secrets in `config.json`). Optional: `PUSH_FCM_SCOPE_URL` overrides the default scope.
+Set `PUSH_FCM_CREDENTIAL_JSON_PATH` (preferred) or `PUSH_FCM_BEARER_TOKEN` in the environment (do not put secrets in config files). Optional: `PUSH_FCM_SCOPE_URL` overrides the default scope. Update `conf/config_push_docker.json` to use this provider.
 
 ```json
 {
   "pushProvider": "fcm",
   "pushProviderUrl": "https://fcm.googleapis.com/v1/projects/enc-scb/messages:send",
   "pushProviderConnectTimeoutSeconds": 2,
-  "pushProviderTimeoutSeconds": 30
+  "pushProviderTimeoutSeconds": 30,
+  "grafanaDashboardUrl": "http://localhost:3000/d/gateway-overview-push"
 }
 ```
 
-Start the push gateway:
+## Final note
 
-```sh
-go run ./cmd/push-gateway -config conf/config_push.json -addr :8081
-```
-
-
-
-Final note
 Gateway is a real-time submission bridge.
 It guarantees truthful submission outcomes and nothing beyond that.
 Any capability beyond submission (delivery tracking, retries, reconciliation)
 requires a separate system with explicit time ownership.
-
-```

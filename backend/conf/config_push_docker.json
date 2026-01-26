@@ -1,7 +1,6 @@
 {
   # Any line can be commented with a hash.
-  # Requires PUSH_FCM_CREDENTIAL_JSON_PATH or PUSH_FCM_BEARER_TOKEN in the environment.
-  # Optional: PUSH_FCM_SCOPE_URL overrides the default scope.
+  # Requires PUSH_FCM_BEARER_TOKEN in the environment for local dev.
   "pushProvider": "fcm",
   "pushProviderUrl": "https://fcm.googleapis.com/v1/projects/enc-scb/messages:send",
   "pushProviderConnectTimeoutSeconds": 2,

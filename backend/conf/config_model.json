@@ -3,5 +3,6 @@
   "smsProvider": "model",
   "smsProviderUrl": "http://localhost:9091/sms/send",
   "smsProviderConnectTimeoutSeconds": 2,
-  "smsProviderTimeoutSeconds": 30
+  "smsProviderTimeoutSeconds": 30,
+  "grafanaDashboardUrl": "http://localhost:3000/d/gateway-overview-sms"
 }

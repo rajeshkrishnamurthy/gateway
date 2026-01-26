@@ -48,6 +48,10 @@ main.page {
   gap: 1.5rem;
 }
 
+.page-header .nav {
+  margin-left: auto;
+}
+
 .brand h1 {
   margin: 0 0 0.4rem;
   font-family: var(--font-display);
@@ -288,6 +292,15 @@ main.page {
   letter-spacing: 0.01em;
 }
 
+.grafana-frame {
+  width: 100%;
+  min-height: 70vh;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  display: block;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -424,6 +437,31 @@ main.page {
 
 .topbar-title {
   font-size: 1rem;
+}
+
+.portal-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.portal-nav {
+  align-items: center;
+}
+
+.portal-nav .theme-toggle {
+  margin-left: 0.4rem;
+}
+
+.nav a.is-active {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+  background: rgba(29, 108, 111, 0.12);
+}
+
+:root[data-theme="dark"] .nav a.is-active {
+  background: rgba(95, 195, 204, 0.15);
 }
 
 :root[data-theme="dark"] .topbar {
@@ -779,5 +817,4 @@ main.page {
   max-height: 320px;
   overflow: auto;
 }
-
 

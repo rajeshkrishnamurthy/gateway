@@ -1,0 +1,29 @@
+<main class="page portal-overview">
+  <header class="page-header">
+    <div class="brand">
+      <h1>{{.Title}}</h1>
+      <p>Unified access to gateway consoles, load balancers, and operational tooling.</p>
+    </div>
+  </header>
+
+  <section class="panel">
+    <h2>Consoles</h2>
+    {{if .Consoles}}
+    <div class="health-ui-grid">
+      {{range .Consoles}}
+      <a class="ui-card" href="{{.Href}}">
+        <span class="ui-card-title">{{.Label}}</span>
+        <span class="ui-card-meta">{{.Meta}}</span>
+        <span class="ui-card-action">Open</span>
+      </a>
+      {{end}}
+    </div>
+    {{else}}
+    <p class="muted">No consoles configured.</p>
+    {{end}}
+  </section>
+
+  <section class="note">
+    This portal proxies existing consoles. Availability depends on the upstream services.
+  </section>
+</main>

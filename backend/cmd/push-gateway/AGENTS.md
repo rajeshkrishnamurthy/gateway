@@ -6,10 +6,10 @@
 ## Boundaries
 - Keep all `net/http` usage and UI handlers in `main.go` here.
 - Core push gateway code must remain HTTP-agnostic.
-- Provider credentials are read from env in the provider switch; never from `config.json`.
+- Provider credentials are read from env in the provider switch; never from config files.
 
 ## Config + flags
-- `-config` points to provider semantics and timeouts only.
+- `-config` covers provider semantics/timeouts plus instance-agnostic gateway settings (e.g. `grafanaDashboardUrl`).
 - `-addr` is the instance bind address; do not move it into config.
 - Full-line `#` comments are allowed in config files.
 
@@ -19,4 +19,4 @@
 
 ## Observability
 - Preserve logging and metrics semantics; only push nouns change.
-- Metrics UI link uses `GRAFANA_DASHBOARD_URL` when set; otherwise use the default push dashboard URL.
+- Metrics UI link uses `grafanaDashboardUrl` from config; fall back to the default push dashboard URL.

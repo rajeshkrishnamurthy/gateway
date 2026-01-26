@@ -1,0 +1,15 @@
+# Scrape configuration for Docker Compose gateway targets.
+
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: "sms-gateway"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["sms-gateway-1:8080", "sms-gateway-2:8080"]
+
+  - job_name: "push-gateway"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["push-gateway-1:8081", "push-gateway-2:8081"]

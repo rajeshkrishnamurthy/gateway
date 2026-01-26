@@ -1,0 +1,69 @@
+<main class="page">
+  <header class="page-header">
+    <div class="brand">
+      <h1>HAProxy</h1>
+      <p>Load balancer health derived from the HAProxy CSV stats endpoint.</p>
+    </div>
+  </header>
+
+  {{if .Error}}
+  <section class="panel">
+    <h2>Unable to load HAProxy stats</h2>
+    <p class="muted">{{.Error}}</p>
+  </section>
+  {{else}}
+  <section class="panel">
+    <h2>Frontends</h2>
+    {{if .Frontends}}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Status</th>
+          <th>Sessions</th>
+          <th>Last change</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Frontends}}
+        <tr>
+          <td>{{.Name}}</td>
+          <td><span class="status {{.StatusClass}}">{{.Status}}</span></td>
+          <td>{{.Sessions}}</td>
+          <td>{{.LastChange}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted">No frontend entries in the HAProxy stats feed.</p>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <h2>Backends</h2>
+    {{if .Backends}}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Status</th>
+          <th>Servers up</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Backends}}
+        <tr>
+          <td>{{.Name}}</td>
+          <td><span class="status {{.StatusClass}}">{{.Status}}</span></td>
+          <td>{{.ServersUp}} / {{.ServersTotal}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted">No backend entries in the HAProxy stats feed.</p>
+    {{end}}
+  </section>
+  {{end}}
+</main>

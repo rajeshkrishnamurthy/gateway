@@ -1,0 +1,114 @@
+services:
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend/conf/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./backend/conf/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./backend/conf/prometheus_docker.yml:/etc/prometheus/prometheus.yml:ro
+
+  model-provider:
+    image: golang:tip
+    working_dir: /app/backend
+    command: ["go", "run", "./cmd/fake-provider/modelprovider", "-addr", ":9091"]
+    volumes:
+      - ./backend:/app/backend
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    ports:
+      - "9091:9091"
+
+  sms-gateway-1:
+    image: golang:tip
+    working_dir: /app/backend
+    volumes:
+      - ./backend:/app/backend
+      - ./ui:/app/ui
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    command: ["go", "run", "./cmd/sms-gateway", "-config", "conf/config_docker.json", "-addr", ":8080"]
+    depends_on:
+      - model-provider
+    ports:
+      - "18080:8080"
+  sms-gateway-2:
+    image: golang:tip
+    working_dir: /app/backend
+    volumes:
+      - ./backend:/app/backend
+      - ./ui:/app/ui
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    command: ["go", "run", "./cmd/sms-gateway", "-config", "conf/config_docker.json", "-addr", ":8080"]
+    depends_on:
+      - model-provider
+    ports:
+      - "18081:8080"
+
+  push-gateway-1:
+    image: golang:tip
+    working_dir: /app/backend
+    environment:
+      PUSH_FCM_BEARER_TOKEN: "dev"
+    volumes:
+      - ./backend:/app/backend
+      - ./ui:/app/ui
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    command: ["go", "run", "./cmd/push-gateway", "-config", "conf/config_push_docker.json", "-addr", ":8081"]
+    ports:
+      - "19080:8081"
+  push-gateway-2:
+    image: golang:tip
+    working_dir: /app/backend
+    environment:
+      PUSH_FCM_BEARER_TOKEN: "dev"
+    volumes:
+      - ./backend:/app/backend
+      - ./ui:/app/ui
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    command: ["go", "run", "./cmd/push-gateway", "-config", "conf/config_push_docker.json", "-addr", ":8081"]
+    ports:
+      - "19081:8081"
+
+  haproxy:
+    image: haproxy:2.8
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+      - "8404:8404"
+    volumes:
+      - ./backend/conf/haproxy_docker.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      - sms-gateway-1
+      - sms-gateway-2
+      - push-gateway-1
+      - push-gateway-2
+
+  admin-portal:
+    image: golang:tip
+    working_dir: /app/backend
+    volumes:
+      - ./backend:/app/backend
+      - ./ui:/app/ui
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    command: ["go", "run", "./cmd/admin-portal", "-config", "conf/admin_portal_docker.json", "-addr", ":8090"]
+    ports:
+      - "8090:8090"
+    depends_on:
+      - haproxy
+
+volumes:
+  go-mod-cache:
+  go-build-cache:

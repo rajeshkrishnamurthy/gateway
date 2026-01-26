@@ -14,5 +14,6 @@
 
   # smskarix requires SMSKARIX_API_KEY in the environment.
   # smskarix-only settings.
-  "smsProviderVersion": "v1"
+  "smsProviderVersion": "v1",
+  "grafanaDashboardUrl": "http://localhost:3000/d/gateway-overview-sms"
 }

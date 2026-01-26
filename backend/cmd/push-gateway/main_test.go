@@ -54,7 +54,8 @@ func TestLoadConfigAllowsHashComments(t *testing.T) {
   "pushProvider": "fcm",
   "pushProviderUrl": "http://localhost:9095/push/send",
   "pushProviderConnectTimeoutSeconds": 2,
-  "pushProviderTimeoutSeconds": 30
+  "pushProviderTimeoutSeconds": 30,
+  "grafanaDashboardUrl": "http://localhost:3000/d/gateway-overview-push"
 }
   # trailing comment
 `
@@ -72,6 +73,9 @@ func TestLoadConfigAllowsHashComments(t *testing.T) {
 	}
 	if cfg.PushProviderURL != "http://localhost:9095/push/send" {
 		t.Fatalf("expected pushProviderUrl, got %q", cfg.PushProviderURL)
+	}
+	if cfg.GrafanaDashboardURL != "http://localhost:3000/d/gateway-overview-push" {
+		t.Fatalf("expected grafanaDashboardUrl, got %q", cfg.GrafanaDashboardURL)
 	}
 }
 

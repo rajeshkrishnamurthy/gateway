@@ -1,0 +1,9 @@
+# Setu admin portal configuration.
+# Full-line comments are allowed with #.
+{
+  "title": "Setu Admin Portal",
+  "smsGatewayUrl": "http://localhost:8080",
+  "pushGatewayUrl": "http://localhost:8081",
+  "commandCenterUrl": "http://localhost:8070",
+  "haproxyStatsUrl": "http://localhost:8404/stats;csv"
+}

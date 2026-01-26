@@ -1,13 +1,8 @@
 (function () {
   var storageKey = "services-health-theme";
   var root = document.documentElement;
-  var toggle = document.getElementById("theme-toggle");
 
-  if (!toggle) {
-    return;
-  }
-
-  function applyTheme(theme) {
+  function applyTheme(theme, toggle) {
     if (theme === "dark") {
       root.setAttribute("data-theme", "dark");
       toggle.classList.remove("is-off");
@@ -24,27 +19,48 @@
     toggle.textContent = "Light";
   }
 
-  var stored = null;
-  try {
-    stored = window.localStorage.getItem(storageKey);
-  } catch (err) {
-    stored = null;
-  }
-
-  var prefersDark = false;
-  if (window.matchMedia) {
-    prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  }
-
-  var initial = stored || (prefersDark ? "dark" : "light");
-  applyTheme(initial);
-
-  toggle.addEventListener("click", function () {
-    var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  function resolveTheme() {
+    var stored = null;
     try {
-      window.localStorage.setItem(storageKey, next);
+      stored = window.localStorage.getItem(storageKey);
     } catch (err) {
+      stored = null;
     }
-    applyTheme(next);
+
+    var prefersDark = false;
+    if (window.matchMedia) {
+      prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    }
+
+    return stored || (prefersDark ? "dark" : "light");
+  }
+
+  function initThemeToggle() {
+    var toggle = document.getElementById("theme-toggle");
+    if (!toggle) {
+      return;
+    }
+    if (toggle.dataset.themeBound === "true") {
+      applyTheme(resolveTheme(), toggle);
+      return;
+    }
+    toggle.dataset.themeBound = "true";
+    applyTheme(resolveTheme(), toggle);
+    toggle.addEventListener("click", function () {
+      var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      try {
+        window.localStorage.setItem(storageKey, next);
+      } catch (err) {
+      }
+      applyTheme(next, toggle);
+    });
+  }
+
+  document.addEventListener("htmx:afterSwap", function (event) {
+    if (event && event.target && event.target.id === "ui-root") {
+      initThemeToggle();
+    }
   });
+
+  initThemeToggle();
 })();

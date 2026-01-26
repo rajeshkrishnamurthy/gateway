@@ -1,133 +1,137 @@
-# Services health configuration. Full-line # comments are allowed.
+# Services health configuration for Docker Compose.
 {
   "services": [
     {
-      "id": "sms-gateway",
-      "label": "SMS Gateway",
-      "defaultConfigPath": "conf/config.json",
+      "id": "sms-gateway-1",
+      "label": "SMS Gateway (1)",
       "startCommand": [
-        "go",
-        "run",
-        "./cmd/sms-gateway",
-        "-config",
-        "{config}",
-        "-addr",
-        "{addr}"
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "up",
+        "-d",
+        "sms-gateway-1"
       ],
       "stopCommand": [
-        "portctl",
-        "-k",
-        "{port}"
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "stop",
+        "sms-gateway-1"
       ],
       "instances": [
         {
           "name": "sms-1",
           "addr": ":18080",
-          "configPath": "conf/config.json"
-        },
-        {
-          "name": "sms-2",
-          "addr": ":18081",
-          "configPath": "conf/config.json"
-        },
-        {
-          "name": "sms-3",
-          "addr": ":18082",
-          "configPath": "conf/config.json"
+          "uiUrl": "http://localhost:18080/ui"
         }
       ]
     },
     {
-      "id": "push-gateway",
-      "label": "Push Gateway",
-      "defaultConfigPath": "conf/config_push.json",
+      "id": "sms-gateway-2",
+      "label": "SMS Gateway (2)",
       "startCommand": [
-        "go",
-        "run",
-        "./cmd/push-gateway",
-        "-config",
-        "{config}",
-        "-addr",
-        "{addr}"
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "up",
+        "-d",
+        "sms-gateway-2"
       ],
       "stopCommand": [
-        "portctl",
-        "-k",
-        "{port}"
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "stop",
+        "sms-gateway-2"
+      ],
+      "instances": [
+        {
+          "name": "sms-2",
+          "addr": ":18081",
+          "uiUrl": "http://localhost:18081/ui"
+        }
+      ]
+    },
+    {
+      "id": "push-gateway-1",
+      "label": "Push Gateway (1)",
+      "startCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "up",
+        "-d",
+        "push-gateway-1"
+      ],
+      "stopCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "stop",
+        "push-gateway-1"
       ],
       "instances": [
         {
           "name": "push-1",
           "addr": ":19080",
-          "configPath": "conf/config_push.json"
-        },
+          "uiUrl": "http://localhost:19080/ui"
+        }
+      ]
+    },
+    {
+      "id": "push-gateway-2",
+      "label": "Push Gateway (2)",
+      "startCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "up",
+        "-d",
+        "push-gateway-2"
+      ],
+      "stopCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "stop",
+        "push-gateway-2"
+      ],
+      "instances": [
         {
           "name": "push-2",
           "addr": ":19081",
-          "configPath": "conf/config_push.json"
-        },
-        {
-          "name": "push-3",
-          "addr": ":19082",
-          "configPath": "conf/config_push.json"
-        }
-      ]
-    },
-    {
-      "id": "prometheus",
-      "label": "Prometheus",
-      "defaultConfigPath": "conf/prometheus.yml",
-      "startCommand": [
-        "prometheus",
-        "--config.file={config}",
-        "--web.listen-address={addr}"
-      ],
-      "stopCommand": [
-        "portctl",
-        "-k",
-        "{port}"
-      ],
-      "instances": [
-        {
-          "name": "prometheus",
-          "addr": ":9090",
-          "uiUrl": "http://localhost:9090",
-          "configPath": "conf/prometheus.yml"
-        }
-      ]
-    },
-    {
-      "id": "grafana",
-      "label": "Grafana",
-      "startCommand": [
-        "grafana-server"
-      ],
-      "stopCommand": [
-        "portctl",
-        "-k",
-        "{port}"
-      ],
-      "instances": [
-        {
-          "name": "grafana",
-          "addr": ":3000",
-          "uiUrl": "http://localhost:3000"
+          "uiUrl": "http://localhost:19081/ui"
         }
       ]
     },
     {
       "id": "haproxy",
       "label": "HAProxy",
-      "defaultConfigPath": "conf/haproxy.cfg",
       "startCommand": [
-        "haproxy",
+        "docker",
+        "compose",
         "-f",
-        "conf/haproxy.cfg"
+        "../docker-compose.yml",
+        "up",
+        "-d",
+        "haproxy"
       ],
       "stopCommand": [
-        "portctl",
-        "-k",
-        "{port}"
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "stop",
+        "haproxy"
       ],
       "instances": [
         {
@@ -148,6 +152,90 @@
       ],
       "singleToggle": true,
       "toggleInstance": "sms-frontend"
+    },
+    {
+      "id": "prometheus",
+      "label": "Prometheus",
+      "startCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "up",
+        "-d",
+        "prometheus"
+      ],
+      "stopCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "stop",
+        "prometheus"
+      ],
+      "instances": [
+        {
+          "name": "prometheus",
+          "addr": ":9090",
+          "uiUrl": "http://localhost:9090"
+        }
+      ]
+    },
+    {
+      "id": "grafana",
+      "label": "Grafana",
+      "startCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "up",
+        "-d",
+        "grafana"
+      ],
+      "stopCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "stop",
+        "grafana"
+      ],
+      "instances": [
+        {
+          "name": "grafana",
+          "addr": ":3000",
+          "uiUrl": "http://localhost:3000"
+        }
+      ]
+    },
+    {
+      "id": "admin-portal",
+      "label": "Admin Portal",
+      "startCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "up",
+        "-d",
+        "admin-portal"
+      ],
+      "stopCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "stop",
+        "admin-portal"
+      ],
+      "instances": [
+        {
+          "name": "admin-portal",
+          "addr": ":8090",
+          "uiUrl": "http://localhost:8090/ui"
+        }
+      ]
     }
   ]
 }

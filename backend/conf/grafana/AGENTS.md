@@ -14,5 +14,5 @@ Provisioned Grafana assets for gateway observability.
 - Avoid extra datasources or plugins.
 
 ## UI linkage
-- Gateway UI links here via `GRAFANA_DASHBOARD_URL`.
+- Gateway UI links here via `grafanaDashboardUrl` in the gateway config.
 - Keep dashboard slugs stable: `gateway-overview-sms` and `gateway-overview-push`.

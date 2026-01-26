@@ -1,0 +1,8 @@
+{
+  # Setu admin portal configuration for Docker Compose.
+  "title": "Setu Admin Portal",
+  "smsGatewayUrl": "http://haproxy:8080",
+  "pushGatewayUrl": "http://haproxy:8081",
+  "commandCenterUrl": "http://host.docker.internal:8070",
+  "haproxyStatsUrl": "http://haproxy:8404/stats;csv"
+}
