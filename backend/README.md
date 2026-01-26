@@ -101,6 +101,16 @@ Gateway exposes Prometheus metrics at `/metrics`.
 Metrics are low-cardinality and use the adapter provider name for the `provider` label.
 Latency histograms share buckets at 0.1s, 0.25s, 0.5s, 1s, 2.5s, and 5s.
 
+
+## Gateway stack overview
+
+The gateway stack is intentionally small and explicit:
+
+- Gateways: `cmd/sms-gateway` and `cmd/push-gateway` are single-provider, submission-only processes. Provider semantics live in `config*.json`; bind address is supplied via `-addr`. Secrets are provided via environment variables only.
+- HAProxy: optional load-balancer in `conf/haproxy.cfg` that fronts stable ports and routes to multiple gateway instances. Gateways remain unaware of peers.
+- Prometheus: scrapes gateway instances directly using `conf/prometheus.yml` (do not scrape HAProxy). Jobs separate SMS vs push.
+- Grafana: provisioned dashboards in `conf/grafana/dashboards`. The gateway UI Metrics link points to `GRAFANA_DASHBOARD_URL` (defaults to the SMS/push dashboard URLs).
+
 ## Prometheus quick start
 
 Use the sample config at `conf/prometheus.yml` to scrape the gateway.
@@ -108,7 +118,7 @@ Use the sample config at `conf/prometheus.yml` to scrape the gateway.
 Start the gateway (adjust the config/port if needed):
 
 ```sh
-go run ./cmd/sms-gateway -config conf/config.json
+go run ./cmd/sms-gateway -config conf/config.json -addr :8080
 ```
 
 Start Prometheus with the sample config:
@@ -120,6 +130,73 @@ Start Prometheus with the sample config:
 Open the Prometheus UI at `http://localhost:9090` and run the query `gateway_requests_total`.
 If you send a request through the gateway, the counter should increment.
 
+
+
+## Services health console
+
+The services health console is a standalone UI for checking gateway and tool status (up/down) and running start/stop commands defined in `conf/services_health.json`.
+
+Start the console:
+
+```sh
+go run ./cmd/services-health -config conf/services_health.json -addr :8070
+```
+
+Open `http://localhost:8070/ui`.
+
+Notes:
+- Status checks use TCP connectivity to each configured `addr`.
+- Start/stop actions execute the command arrays from the config with `{config}`, `{addr}`, and `{port}` placeholder substitution.
+- Relative paths are resolved from the health console working directory.
+
+## Grafana quick start
+
+Grafana is optional and uses the existing Prometheus instance. Provisioning files live in `conf/grafana/`.
+
+Start Grafana (Docker):
+
+```sh
+docker run --rm -p 3000:3000 \
+  -v "$PWD/conf/grafana/provisioning:/etc/grafana/provisioning" \
+  -v "$PWD/conf/grafana/dashboards:/var/lib/grafana/dashboards" \
+  grafana/grafana:latest
+```
+
+Open `http://localhost:3000/d/gateway-overview-sms` for SMS and `http://localhost:3000/d/gateway-overview-push` for push.
+
+Set `GRAFANA_DASHBOARD_URL` to point the gateway UI Metrics link at your Grafana instance.
+
+## Load balancing (HAProxy)
+
+HAProxy can provide a stable client endpoint while routing to multiple gateway instances. Gateways stay unchanged and run on distinct local ports.
+
+Example (three SMS + three push instances):
+
+```sh
+# SMS gateways
+
+go run ./cmd/sms-gateway -config conf/config.json -addr :18080
+
+go run ./cmd/sms-gateway -config conf/config.json -addr :18081
+
+go run ./cmd/sms-gateway -config conf/config.json -addr :18082
+
+# Push gateways
+
+go run ./cmd/push-gateway -config conf/config_push.json -addr :19080
+
+go run ./cmd/push-gateway -config conf/config_push.json -addr :19081
+
+go run ./cmd/push-gateway -config conf/config_push.json -addr :19082
+```
+
+Start HAProxy (fronts stable ports `:8080` for SMS and `:8081` for push):
+
+```sh
+haproxy -f conf/haproxy.cfg
+```
+
+Prometheus should scrape the gateway instances directly, not HAProxy. Update `conf/prometheus.yml` targets and reload Prometheus after scaling.
 
 ## Local fake provider + gateway smoke test
 
@@ -134,7 +211,6 @@ Gateway loads its configuration from `config.json` in the working directory:
 ```json
 {
   "smsProvider": "default",
-  "addr": ":8080",
   "smsProviderUrl": "http://localhost:9090/sms/send",
   "smsProviderConnectTimeoutSeconds": 2,
   "smsProviderTimeoutSeconds": 30
@@ -144,7 +220,7 @@ Gateway loads its configuration from `config.json` in the working directory:
 Start the gateway:
 
 ```sh
-go run ./cmd/sms-gateway
+go run ./cmd/sms-gateway -addr :8080
 ```
 
 Send requests through the gateway (use a fresh referenceId each time):
@@ -182,7 +258,6 @@ Configure the gateway to use it:
 ```json
 {
   "smsProvider": "model",
-  "addr": ":8080",
   "smsProviderUrl": "http://localhost:9091/sms/send",
   "smsProviderConnectTimeoutSeconds": 2,
   "smsProviderTimeoutSeconds": 30
@@ -196,7 +271,6 @@ Set the API key via `SMS24X7_API_KEY` in the environment (do not put secrets in 
 ```json
 {
   "smsProvider": "sms24x7",
-  "addr": ":8080",
   "smsProviderUrl": "https://api.example.com/sms/send",
   "smsProviderServiceName": "your-service",
   "smsProviderSenderId": "your-sender",
@@ -212,7 +286,6 @@ Set the API key via `SMSKARIX_API_KEY` in the environment (do not put secrets in
 ```json
 {
   "smsProvider": "smskarix",
-  "addr": ":8080",
   "smsProviderUrl": "https://api.example.com/sms/send",
   "smsProviderVersion": "v1",
   "smsProviderSenderId": "your-sender",
@@ -228,7 +301,6 @@ Set the API key via `SMSINFOBIP_API_KEY` in the environment (do not put secrets 
 ```json
 {
   "smsProvider": "smsinfobip",
-  "addr": ":8080",
   "smsProviderUrl": "https://api.example.com/sms/send",
   "smsProviderSenderId": "your-sender",
   "smsProviderConnectTimeoutSeconds": 2,
@@ -243,7 +315,6 @@ Set `PUSH_FCM_CREDENTIAL_JSON_PATH` (preferred) or `PUSH_FCM_BEARER_TOKEN` in th
 ```json
 {
   "pushProvider": "fcm",
-  "addr": ":8081",
   "pushProviderUrl": "https://fcm.googleapis.com/v1/projects/enc-scb/messages:send",
   "pushProviderConnectTimeoutSeconds": 2,
   "pushProviderTimeoutSeconds": 30
@@ -253,7 +324,7 @@ Set `PUSH_FCM_CREDENTIAL_JSON_PATH` (preferred) or `PUSH_FCM_BEARER_TOKEN` in th
 Start the push gateway:
 
 ```sh
-go run ./cmd/push-gateway -config conf/config_push.json
+go run ./cmd/push-gateway -config conf/config_push.json -addr :8081
 ```
 
 

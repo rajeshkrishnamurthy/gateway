@@ -11,6 +11,7 @@
 
 # Build output
 bin/
+cmd/sms-gateway/sms-gateway
 
 # Go workspace files
 go.work

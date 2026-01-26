@@ -27,10 +27,13 @@ import (
 const maxBodyBytes = 16 << 10
 
 var configPath = flag.String("config", "config.json", "Gateway config file path")
+var listenAddr = flag.String("addr", ":8080", "HTTP listen address")
 var showHelp = flag.Bool("help", false, "show usage")
 var showVersion = flag.Bool("version", false, "show version")
 
 const version = "0.1.0"
+
+const defaultGrafanaDashboardURL = "http://localhost:3000/d/gateway-overview-sms"
 
 const (
 	minProviderConnectTimeout = 2 * time.Second
@@ -53,7 +56,6 @@ var latencyBuckets = []time.Duration{
 
 type fileConfig struct {
 	SMSProvider                      string `json:"smsProvider"`
-	Addr                             string `json:"addr"`
 	SMSProviderURL                   string `json:"smsProviderUrl"`
 	SMSProviderVersion               string `json:"smsProviderVersion"`
 	SMSProviderServiceName           string `json:"smsProviderServiceName"`
@@ -78,6 +80,7 @@ type uiServer struct {
 	sendTitle       string
 	sendNavLabel    string
 	sendEndpoint    string
+	metricsURL      string
 	isPush          bool
 	gatewayName     string
 	version         string
@@ -91,6 +94,7 @@ type uiServer struct {
 type overviewView struct {
 	ConsoleTitle    string
 	SendNavLabel    string
+	MetricsURL      string
 	GatewayName     string
 	Version         string
 	ProviderName    string
@@ -100,6 +104,7 @@ type overviewView struct {
 
 type troubleshootView struct {
 	SendNavLabel     string
+	MetricsURL       string
 	ReferenceID      string
 	ProviderDecision string
 	MappingDecision  string
@@ -109,6 +114,7 @@ type troubleshootView struct {
 
 type metricsView struct {
 	SendNavLabel         string
+	MetricsURL           string
 	TotalRequests        string
 	AcceptedTotal        string
 	RejectedTotal        string
@@ -122,6 +128,7 @@ type sendView struct {
 	SendTitle    string
 	SendEndpoint string
 	SendNavLabel string
+	MetricsURL   string
 	IsPush       bool
 }
 
@@ -190,7 +197,7 @@ func main() {
 	}
 
 	server := &http.Server{
-		Addr:    cfg.Addr,
+		Addr:    *listenAddr,
 		Handler: newMux(gw, metricsRegistry, ui),
 	}
 
@@ -204,7 +211,7 @@ func main() {
 
 	log.Printf(
 		"listening on %s configPath=%q smsProvider=%q smsProviderUrl=%q smsProviderTimeoutSeconds=%d smsProviderConnectTimeoutSeconds=%d",
-		cfg.Addr,
+		*listenAddr,
 		*configPath,
 		cfg.SMSProvider,
 		cfg.SMSProviderURL,
@@ -267,9 +274,6 @@ func loadConfig(path string) (fileConfig, error) {
 		return fileConfig{}, errors.New("config has trailing data")
 	}
 
-	if strings.TrimSpace(cfg.Addr) == "" {
-		return fileConfig{}, errors.New("addr is required")
-	}
 	cfg.SMSProvider = strings.TrimSpace(cfg.SMSProvider)
 	if cfg.SMSProvider == "" {
 		cfg.SMSProvider = "default"
@@ -494,6 +498,10 @@ func newUIServer(providerName string, providerTimeout time.Duration, metricsRegi
 	if err != nil {
 		return nil, err
 	}
+	metricsURL := strings.TrimSpace(os.Getenv("GRAFANA_DASHBOARD_URL"))
+	if metricsURL == "" {
+		metricsURL = defaultGrafanaDashboardURL
+	}
 	return &uiServer{
 		templates:       templates,
 		staticDir:       filepath.Join(uiDir, "static"),
@@ -501,6 +509,7 @@ func newUIServer(providerName string, providerTimeout time.Duration, metricsRegi
 		sendTitle:       "Send Test SMS",
 		sendNavLabel:    "Send Test SMS",
 		sendEndpoint:    "/sms/send",
+		metricsURL:      metricsURL,
 		isPush:          false,
 		gatewayName:     "sms-gateway",
 		version:         version,
@@ -574,6 +583,7 @@ func (u *uiServer) handleOverview(w http.ResponseWriter, r *http.Request) {
 	view := overviewView{
 		ConsoleTitle:    u.consoleTitle,
 		SendNavLabel:    u.sendNavLabel,
+		MetricsURL:      u.metricsURL,
 		GatewayName:     u.gatewayName,
 		Version:         u.version,
 		ProviderName:    u.providerName,
@@ -592,6 +602,7 @@ func (u *uiServer) handleSend(w http.ResponseWriter, r *http.Request) {
 		SendTitle:    u.sendTitle,
 		SendEndpoint: u.sendEndpoint,
 		SendNavLabel: u.sendNavLabel,
+		MetricsURL:   u.metricsURL,
 		IsPush:       u.isPush,
 	}
 	u.renderPage(w, r, u.templates.send, "send.tmpl", view)
@@ -602,6 +613,7 @@ func (u *uiServer) handleTroubleshoot(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		view := troubleshootView{
 			SendNavLabel: u.sendNavLabel,
+			MetricsURL:   u.metricsURL,
 		}
 		u.renderPage(w, r, u.templates.troubleshoot, "troubleshoot.tmpl", view)
 	case http.MethodPost:
@@ -637,6 +649,7 @@ func (u *uiServer) handleUIMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	view := buildMetricsView(u.metricsRegistry)
 	view.SendNavLabel = u.sendNavLabel
+	view.MetricsURL = u.metricsURL
 	u.renderPage(w, r, u.templates.metrics, "metrics.tmpl", view)
 }
 
@@ -669,7 +682,7 @@ func renderFragment(w http.ResponseWriter, tmpl *template.Template, name string,
 
 func renderShell(w http.ResponseWriter, fragment []byte, title string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if _, err := io.WriteString(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><link rel=\"stylesheet\" href=\"/ui/static/ui.css\"><title>"+title+"</title></head><body><div id=\"ui-root\">"); err != nil {
+	if _, err := io.WriteString(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><link rel=\"stylesheet\" href=\"/ui/static/ui.css\"><title>"+title+"</title></head><body><div class=\"topbar\"><div class=\"topbar-brand\"><svg class=\"topbar-logo\" viewBox=\"0 0 48 24\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M2 18c6-10 12-14 22-14s16 4 22 14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"/><path d=\"M8 18v-6M40 18v-6M16 18v-4M32 18v-4\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"/><path d=\"M2 18h44\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"/></svg><span class=\"topbar-title\">Setu</span></div></div><div id=\"ui-root\">"); err != nil {
 		log.Printf("write shell start: %v", err)
 		return
 	}

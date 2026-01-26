@@ -1,18 +1,16 @@
 # Adapter AGENTS.md — ProviderCall Builders
 
 ## Purpose
-This folder defines ProviderCall builders for external SMS providers. The model adapter here is the gold standard; follow its structure and logging style.
+This folder defines ProviderCall builders for external SMS and push providers. The SMS model adapter is the gold standard; push adapters must mirror its control flow and logging discipline.
 
 ## Ubiquitous Language (Strict)
-- provider: external SMS system.
-- ProviderCall: runtime callable capability.
-  Type: `func(context.Context, gateway.SMSRequest) (gateway.ProviderResult, error)`.
-- ProviderCall builder: function that constructs and returns a ProviderCall
-  (e.g., `ModelProviderCall`, `DefaultProviderCall`).
+- provider: external system (outside our control).
+- ProviderCall: runtime callable capability. Signature matches the owning gateway request type.
+- ProviderCall builder: function that constructs and returns a ProviderCall.
 - adapter: the logic inside a ProviderCall; no adapter structs or interfaces.
 
 ## Required Behavior
-- Translate Gateway intent into provider request format.
+- Translate gateway intent into provider request format.
 - Perform the provider HTTP call using the passed context only.
 - Interpret provider responses and map to ProviderResult or error.
 - Log provider interactions and mapping decisions.
@@ -31,12 +29,12 @@ Must log only:
 - provider HTTP status
 - provider error codes (if any)
 - mapping decision (provider outcome → gateway reason)
-- recipientMasked (redacted recipient)
+- redacted recipient/token
 - messageLen (length only)
 - messageHash (hash only)
 
 Must not log:
-- full recipient or full message text
+- full recipient/token or full message text
 - raw request payloads
 - credentials, auth headers, or provider secrets
 
@@ -56,8 +54,8 @@ Must not log:
 - Preserve logging structure and fields; only substitute provider-specific values. Do not add or remove logged data.
 - URL-encode dynamic query parameter values when building provider URLs.
 - Add adapter-level tests alongside the implementation (request mapping, response handling, and outcome mapping).
-- Read provider secrets (API keys) from provider-specific environment variables in `cmd/sms-gateway/main.go`, not from `config.json`.
+- Read provider secrets (API keys) from provider-specific environment variables in the gateway `main.go`, not from `config.json`.
 - Map provider outcomes deterministically:
   - return `ProviderResult` only when the submission outcome is certain
   - return `error` for any ambiguous, transport, or provider failure
-- Wire the provider in `cmd/sms-gateway/main.go`; provider-specific constructor arguments are expected and must remain confined to bootstrap wiring.
+- Wire the provider in the owning gateway `main.go`; provider-specific constructor arguments are expected and must remain confined to bootstrap wiring.

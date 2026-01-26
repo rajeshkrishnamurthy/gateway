@@ -3,7 +3,6 @@
   # Requires PUSH_FCM_CREDENTIAL_JSON_PATH or PUSH_FCM_BEARER_TOKEN in the environment.
   # Optional: PUSH_FCM_SCOPE_URL overrides the default scope.
   "pushProvider": "fcm",
-  "addr": ":8081",
   "pushProviderUrl": "https://fcm.googleapis.com/v1/projects/enc-scb/messages:send",
   "pushProviderConnectTimeoutSeconds": 2,
   "pushProviderTimeoutSeconds": 30

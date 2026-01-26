@@ -1,11 +1,16 @@
 # Scrape configuration for the gateway /metrics endpoint.
-# Update the target port if your gateway runs on a different address.
+# Update the target ports to match your running instances.
 
 global:
   scrape_interval: 5s
 
 scrape_configs:
-  - job_name: "gateway"
+  - job_name: "sms-gateway"
     metrics_path: "/metrics"
     static_configs:
-      - targets: ["localhost:8080", "localhost:8081"]
+      - targets: ["localhost:18080", "localhost:18081", "localhost:18082"]
+
+  - job_name: "push-gateway"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["localhost:19080", "localhost:19081", "localhost:19082"]

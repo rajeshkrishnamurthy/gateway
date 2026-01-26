@@ -1,0 +1,152 @@
+# Services health configuration. Full-line # comments are allowed.
+{
+  "services": [
+    {
+      "id": "sms-gateway",
+      "label": "SMS Gateway",
+      "defaultConfigPath": "conf/config.json",
+      "startCommand": [
+        "go",
+        "run",
+        "./cmd/sms-gateway",
+        "-config",
+        "{config}",
+        "-addr",
+        "{addr}"
+      ],
+      "stopCommand": [
+        "portctl",
+        "-k",
+        "{port}"
+      ],
+      "instances": [
+        {
+          "name": "sms-1",
+          "addr": ":18080",
+          "configPath": "conf/config.json"
+        },
+        {
+          "name": "sms-2",
+          "addr": ":18081",
+          "configPath": "conf/config.json"
+        },
+        {
+          "name": "sms-3",
+          "addr": ":18082",
+          "configPath": "conf/config.json"
+        }
+      ]
+    },
+    {
+      "id": "push-gateway",
+      "label": "Push Gateway",
+      "defaultConfigPath": "conf/config_push.json",
+      "startCommand": [
+        "go",
+        "run",
+        "./cmd/push-gateway",
+        "-config",
+        "{config}",
+        "-addr",
+        "{addr}"
+      ],
+      "stopCommand": [
+        "portctl",
+        "-k",
+        "{port}"
+      ],
+      "instances": [
+        {
+          "name": "push-1",
+          "addr": ":19080",
+          "configPath": "conf/config_push.json"
+        },
+        {
+          "name": "push-2",
+          "addr": ":19081",
+          "configPath": "conf/config_push.json"
+        },
+        {
+          "name": "push-3",
+          "addr": ":19082",
+          "configPath": "conf/config_push.json"
+        }
+      ]
+    },
+    {
+      "id": "prometheus",
+      "label": "Prometheus",
+      "defaultConfigPath": "conf/prometheus.yml",
+      "startCommand": [
+        "prometheus",
+        "--config.file={config}",
+        "--web.listen-address={addr}"
+      ],
+      "stopCommand": [
+        "portctl",
+        "-k",
+        "{port}"
+      ],
+      "instances": [
+        {
+          "name": "prometheus",
+          "addr": ":9090",
+          "uiUrl": "http://localhost:9090",
+          "configPath": "conf/prometheus.yml"
+        }
+      ]
+    },
+    {
+      "id": "grafana",
+      "label": "Grafana",
+      "startCommand": [
+        "grafana-server"
+      ],
+      "stopCommand": [
+        "portctl",
+        "-k",
+        "{port}"
+      ],
+      "instances": [
+        {
+          "name": "grafana",
+          "addr": ":3000",
+          "uiUrl": "http://localhost:3000"
+        }
+      ]
+    },
+    {
+      "id": "haproxy",
+      "label": "HAProxy",
+      "startCommand": [
+        "haproxy",
+        "-f",
+        "conf/haproxy.cfg"
+      ],
+      "stopCommand": [
+        "portctl",
+        "-k",
+        "{port}"
+      ],
+      "instances": [
+        {
+          "name": "sms-frontend",
+          "addr": ":8080",
+          "uiUrl": "http://localhost:8080/ui"
+        },
+        {
+          "name": "push-frontend",
+          "addr": ":8081",
+          "uiUrl": "http://localhost:8081/ui"
+        },
+        {
+          "name": "stats",
+          "addr": ":8404",
+          "uiUrl": "http://localhost:8404/stats"
+        }
+      ],
+      "singleToggle": true,
+      "toggleInstance": "sms-frontend"
+    }
+  ]
+}

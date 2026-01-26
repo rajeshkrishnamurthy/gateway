@@ -12,7 +12,6 @@ func TestLoadConfigAllowsHashComments(t *testing.T) {
 	config := `# top comment
 {
   "smsProvider": "model",
-  "addr": ":8080",
   "smsProviderUrl": "http://localhost:9091/sms/send",
   "smsProviderConnectTimeoutSeconds": 2,
   "smsProviderTimeoutSeconds": 30
@@ -39,7 +38,6 @@ func TestLoadConfigAllowsHashComments(t *testing.T) {
 func TestLoadConfigAllowsHashInString(t *testing.T) {
 	config := `{
   "smsProvider": "model",
-  "addr": ":8080",
   "smsProviderUrl": "http://localhost:9091/sms/send#frag",
   "smsProviderConnectTimeoutSeconds": 2,
   "smsProviderTimeoutSeconds": 30
@@ -62,8 +60,7 @@ func TestLoadConfigAllowsHashInString(t *testing.T) {
 func TestLoadConfigInvalidJSON(t *testing.T) {
 	config := `# comment
 {
-  "smsProvider": "model",
-  "addr": ":8080"
+  "smsProvider": "model"
   "smsProviderUrl": "http://localhost:9091/sms/send",
   "smsProviderConnectTimeoutSeconds": 2,
   "smsProviderTimeoutSeconds": 30

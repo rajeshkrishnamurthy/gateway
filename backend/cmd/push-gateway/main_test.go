@@ -52,7 +52,6 @@ func TestLoadConfigAllowsHashComments(t *testing.T) {
 	config := `# top comment
 {
   "pushProvider": "fcm",
-  "addr": ":8080",
   "pushProviderUrl": "http://localhost:9095/push/send",
   "pushProviderConnectTimeoutSeconds": 2,
   "pushProviderTimeoutSeconds": 30
@@ -79,7 +78,6 @@ func TestLoadConfigAllowsHashComments(t *testing.T) {
 func TestLoadConfigAllowsHashInString(t *testing.T) {
 	config := `{
   "pushProvider": "fcm",
-  "addr": ":8080",
   "pushProviderUrl": "http://localhost:9095/push/send#frag",
   "pushProviderConnectTimeoutSeconds": 2,
   "pushProviderTimeoutSeconds": 30
@@ -102,8 +100,7 @@ func TestLoadConfigAllowsHashInString(t *testing.T) {
 func TestLoadConfigInvalidJSON(t *testing.T) {
 	config := `# comment
 {
-  "pushProvider": "fcm",
-  "addr": ":8080"
+  "pushProvider": "fcm"
   "pushProviderUrl": "http://localhost:9095/push/send",
   "pushProviderConnectTimeoutSeconds": 2,
   "pushProviderTimeoutSeconds": 30
