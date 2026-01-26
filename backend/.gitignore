@@ -17,9 +17,10 @@ cmd/sms-gateway/sms-gateway
 go.work
 go.work.sum
 
-# Coverage
+# Coverage and test artifacts
 coverage.out
 *.coverprofile
+ *.prof, *.pprof, *.trace, *.cov
 
 # Dependency directories
 vendor/
@@ -43,4 +44,4 @@ data/
 *.cs
 
 # Secure files
-firebase.json
+**/firebase.json

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadConfigWithComments(t *testing.T) {
@@ -42,5 +43,60 @@ func TestIsAddrUp(t *testing.T) {
 	}
 	if isAddrUp(addr) {
 		t.Fatalf("expected addr down after close: %s", addr)
+	}
+}
+
+func TestWaitForAddrDown(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := listener.Addr().String()
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		_ = listener.Close()
+	}()
+	if err := waitForAddrDown(addr, 500*time.Millisecond); err != nil {
+		t.Fatalf("waitForAddrDown: %v", err)
+	}
+}
+
+func TestSingleToggleUsesToggleInstance(t *testing.T) {
+	upListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen up: %v", err)
+	}
+	defer upListener.Close()
+	upAddr := upListener.Addr().String()
+
+	downListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen down: %v", err)
+	}
+	downAddr := downListener.Addr().String()
+	if err := downListener.Close(); err != nil {
+		t.Fatalf("close down: %v", err)
+	}
+
+	cfg := fileConfig{
+		Services: []serviceConfig{
+			{
+				ID:             "haproxy",
+				Label:          "HAProxy",
+				SingleToggle:   true,
+				ToggleInstance: "primary",
+				Instances: []serviceInstance{
+					{Name: "primary", Addr: downAddr},
+					{Name: "secondary", Addr: upAddr},
+				},
+			},
+		},
+	}
+	view := buildServicesView(cfg, "", nil)
+	if len(view.Services) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(view.Services))
+	}
+	if view.Services[0].ToggleIsUp {
+		t.Fatalf("expected toggle to be down when toggle instance is down")
 	}
 }

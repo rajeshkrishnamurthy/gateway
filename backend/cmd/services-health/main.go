@@ -296,6 +296,10 @@ func (u *uiServer) runAction(serviceID, instanceName, configInput, addrInput str
 	if err := cmd.Run(); err != nil {
 		return actionResult{notice: fmt.Sprintf("stop failed: %v", err), serviceID: serviceID, instanceName: instanceName}
 	}
+	addrToCheck := net.JoinHostPort(host, port)
+	if err := waitForAddrDown(addrToCheck, startWaitTimeout); err != nil {
+		return actionResult{notice: fmt.Sprintf("stop failed: %v", err), serviceID: serviceID, instanceName: instanceName}
+	}
 	log.Printf("stopped %s/%s: %s", service.ID, instance.Name, strings.Join(cmdArgs, " "))
 	return actionResult{notice: fmt.Sprintf("stopped %s (%s)", service.Label, instance.Name), serviceID: service.ID, instanceName: instance.Name, desiredUp: boolPtr(false)}
 }
@@ -367,10 +371,19 @@ func buildServicesView(cfg fileConfig, notice string, overrides map[string]bool)
 			toggleInstance = service.Instances[0].Name
 		}
 		toggleIsUp := false
-		for _, inst := range instances {
-			if inst.IsUp {
-				toggleIsUp = true
-				break
+		if service.SingleToggle {
+			for _, inst := range instances {
+				if inst.Name == toggleInstance {
+					toggleIsUp = inst.IsUp
+					break
+				}
+			}
+		} else {
+			for _, inst := range instances {
+				if inst.IsUp {
+					toggleIsUp = true
+					break
+				}
 			}
 		}
 		services = append(services, serviceView{
@@ -415,6 +428,24 @@ func waitForAddrUp(addr string, timeout time.Duration, exitCh <-chan error) erro
 			continue
 		case <-timer.C:
 			return fmt.Errorf("not listening on %s after %s", addr, timeout)
+		}
+	}
+}
+
+func waitForAddrDown(addr string, timeout time.Duration) error {
+	ticker := time.NewTicker(startPollInterval)
+	defer ticker.Stop()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		if !isAddrUp(addr) {
+			return nil
+		}
+		select {
+		case <-ticker.C:
+			continue
+		case <-timer.C:
+			return fmt.Errorf("still listening on %s after %s", addr, timeout)
 		}
 	}
 }
