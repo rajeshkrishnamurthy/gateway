@@ -25,6 +25,7 @@
         {
           "name": "sms-1",
           "addr": ":18080",
+          "healthUrl": "http://localhost:18080/readyz",
           "uiUrl": "http://localhost:18080/ui"
         }
       ]
@@ -53,6 +54,7 @@
         {
           "name": "sms-2",
           "addr": ":18081",
+          "healthUrl": "http://localhost:18081/readyz",
           "uiUrl": "http://localhost:18081/ui"
         }
       ]
@@ -81,6 +83,7 @@
         {
           "name": "push-1",
           "addr": ":19080",
+          "healthUrl": "http://localhost:19080/readyz",
           "uiUrl": "http://localhost:19080/ui"
         }
       ]
@@ -109,6 +112,7 @@
         {
           "name": "push-2",
           "addr": ":19081",
+          "healthUrl": "http://localhost:19081/readyz",
           "uiUrl": "http://localhost:19081/ui"
         }
       ]
@@ -137,16 +141,19 @@
         {
           "name": "sms-frontend",
           "addr": ":8080",
+          "healthUrl": "http://localhost:8080/readyz",
           "uiUrl": "http://localhost:8080/ui"
         },
         {
           "name": "push-frontend",
           "addr": ":8081",
+          "healthUrl": "http://localhost:8081/readyz",
           "uiUrl": "http://localhost:8081/ui"
         },
         {
           "name": "stats",
           "addr": ":8404",
+          "healthUrl": "http://localhost:8404/stats",
           "uiUrl": "http://localhost:8404/stats"
         }
       ],
@@ -177,6 +184,7 @@
         {
           "name": "prometheus",
           "addr": ":9090",
+          "healthUrl": "http://localhost:9090/-/ready",
           "uiUrl": "http://localhost:9090"
         }
       ]
@@ -205,6 +213,7 @@
         {
           "name": "grafana",
           "addr": ":3000",
+          "healthUrl": "http://localhost:3000/api/health",
           "uiUrl": "http://localhost:3000"
         }
       ]
@@ -233,6 +242,7 @@
         {
           "name": "admin-portal",
           "addr": ":8090",
+          "healthUrl": "http://localhost:8090/readyz",
           "uiUrl": "http://localhost:8090/ui"
         }
       ]

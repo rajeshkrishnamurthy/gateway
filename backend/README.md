@@ -140,7 +140,8 @@ go run ./cmd/services-health -config conf/services_health.json -addr :8070
 Open `http://localhost:8070/ui`.
 
 Notes:
-- Status checks use TCP connectivity to each configured `addr`.
+- Status checks use HTTP GET to each instance `healthUrl` (2xx = up).
+- Each instance in `conf/services_health.json` must define `healthUrl`.
 - Start/stop actions execute the command arrays from the config with `{config}`, `{addr}`, and `{port}` placeholder substitution.
 - Relative paths are resolved from the health console working directory.
 - Docker Compose must be available on the host PATH.

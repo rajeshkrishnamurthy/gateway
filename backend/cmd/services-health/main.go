@@ -22,7 +22,7 @@ import (
 const (
 	defaultConfigPath  = "conf/services_health.json"
 	defaultListenAddr  = ":8070"
-	statusDialTimeout  = 500 * time.Millisecond
+	statusHTTPTimeout  = 2 * time.Second
 	startWaitTimeout   = 10 * time.Second
 	startPollInterval  = 200 * time.Millisecond
 	maxStartOutput     = 400
@@ -56,6 +56,7 @@ type serviceInstance struct {
 	Name       string `json:"name"`
 	Addr       string `json:"addr"`
 	UIURL      string `json:"uiUrl"`
+	HealthURL  string `json:"healthUrl"`
 	ConfigPath string `json:"configPath"`
 }
 
@@ -142,6 +143,8 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleRoot)
+	mux.HandleFunc("/healthz", handleHealthz)
+	mux.HandleFunc("/readyz", handleReadyz)
 	mux.HandleFunc("/ui", ui.handleOverview)
 	mux.HandleFunc("/ui/services", ui.handleServices)
 	mux.HandleFunc("/ui/services/start", ui.handleStart)
@@ -162,6 +165,24 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/ui", http.StatusFound)
+}
+
+func handleHealthz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
+}
+
+func handleReadyz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
 }
 
 func newUIServer(cfg fileConfig) (*uiServer, error) {
@@ -351,7 +372,7 @@ func (u *uiServer) runAction(serviceID, instanceName, configInput, addrInput str
 	if addr == "" {
 		addr = instance.Addr
 	}
-	host, port, err := splitAddr(addr)
+	_, port, err := splitAddr(addr)
 	if err != nil {
 		return actionResult{notice: err.Error(), serviceID: serviceID, instanceName: instanceName}
 	}
@@ -377,8 +398,11 @@ func (u *uiServer) runAction(serviceID, instanceName, configInput, addrInput str
 		go func() {
 			exitCh <- cmd.Wait()
 		}()
-		addrToCheck := net.JoinHostPort(host, port)
-		if err := waitForAddrUp(addrToCheck, startWaitTimeout, exitCh); err != nil {
+		healthURL, err := resolveHealthURL(instance)
+		if err != nil {
+			return actionResult{notice: err.Error(), serviceID: serviceID, instanceName: instanceName}
+		}
+		if err := waitForHealthUp(healthURL, startWaitTimeout, exitCh); err != nil {
 			return actionResult{notice: formatStartError(err, output.String()), serviceID: serviceID, instanceName: instanceName}
 		}
 		log.Printf("started %s/%s: %s", service.ID, instance.Name, strings.Join(cmdArgs, " "))
@@ -387,8 +411,11 @@ func (u *uiServer) runAction(serviceID, instanceName, configInput, addrInput str
 	if err := cmd.Run(); err != nil {
 		return actionResult{notice: fmt.Sprintf("stop failed: %v", err), serviceID: serviceID, instanceName: instanceName}
 	}
-	addrToCheck := net.JoinHostPort(host, port)
-	if err := waitForAddrDown(addrToCheck, startWaitTimeout); err != nil {
+	healthURL, err := resolveHealthURL(instance)
+	if err != nil {
+		return actionResult{notice: err.Error(), serviceID: serviceID, instanceName: instanceName}
+	}
+	if err := waitForHealthDown(healthURL, startWaitTimeout); err != nil {
 		return actionResult{notice: fmt.Sprintf("stop failed: %v", err), serviceID: serviceID, instanceName: instanceName}
 	}
 	log.Printf("stopped %s/%s: %s", service.ID, instance.Name, strings.Join(cmdArgs, " "))
@@ -419,7 +446,8 @@ func buildServicesView(cfg fileConfig, notice string, overrides map[string]bool)
 		instances := make([]instanceView, 0, len(service.Instances))
 		for _, instance := range service.Instances {
 			addr := strings.TrimSpace(instance.Addr)
-			host, port, err := splitAddr(addr)
+			_, port, err := splitAddr(addr)
+			healthURL, healthErr := resolveHealthURL(instance)
 			status := defaultStatusLabel
 			statusClass := statusDownClass
 			isUp := false
@@ -438,8 +466,8 @@ func buildServicesView(cfg fileConfig, notice string, overrides map[string]bool)
 					}
 				}
 			}
-			if err == nil && !overrideApplied {
-				if isAddrUp(net.JoinHostPort(host, port)) {
+			if err == nil && healthErr == nil && !overrideApplied {
+				if isHealthUp(healthURL) {
 					status = "up"
 					statusClass = statusUpClass
 					isUp = true
@@ -508,6 +536,17 @@ func defaultConfigPathFor(service serviceConfig, instance serviceInstance) strin
 	return service.DefaultConfigPath
 }
 
+func resolveHealthURL(instance serviceInstance) (string, error) {
+	healthURL := strings.TrimSpace(instance.HealthURL)
+	if healthURL == "" {
+		return "", fmt.Errorf("healthUrl is required for %s", instance.Name)
+	}
+	if !strings.HasPrefix(healthURL, "http://") && !strings.HasPrefix(healthURL, "https://") {
+		return "", fmt.Errorf("healthUrl must start with http:// or https:// for %s", instance.Name)
+	}
+	return healthURL, nil
+}
+
 func resolveConfigPath(workingDir, configDir, input string) (string, string, error) {
 	input = strings.TrimSpace(input)
 	if input == "" {
@@ -538,13 +577,13 @@ func resolveConfigPath(workingDir, configDir, input string) (string, string, err
 	return fullPath, filepath.ToSlash(cleaned), nil
 }
 
-func waitForAddrUp(addr string, timeout time.Duration, exitCh <-chan error) error {
+func waitForHealthUp(healthURL string, timeout time.Duration, exitCh <-chan error) error {
 	ticker := time.NewTicker(startPollInterval)
 	defer ticker.Stop()
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	for {
-		if isAddrUp(addr) {
+		if isHealthUp(healthURL) {
 			return nil
 		}
 		select {
@@ -556,25 +595,25 @@ func waitForAddrUp(addr string, timeout time.Duration, exitCh <-chan error) erro
 		case <-ticker.C:
 			continue
 		case <-timer.C:
-			return fmt.Errorf("not listening on %s after %s", addr, timeout)
+			return fmt.Errorf("not healthy at %s after %s", healthURL, timeout)
 		}
 	}
 }
 
-func waitForAddrDown(addr string, timeout time.Duration) error {
+func waitForHealthDown(healthURL string, timeout time.Duration) error {
 	ticker := time.NewTicker(startPollInterval)
 	defer ticker.Stop()
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	for {
-		if !isAddrUp(addr) {
+		if !isHealthUp(healthURL) {
 			return nil
 		}
 		select {
 		case <-ticker.C:
 			continue
 		case <-timer.C:
-			return fmt.Errorf("still listening on %s after %s", addr, timeout)
+			return fmt.Errorf("still healthy at %s after %s", healthURL, timeout)
 		}
 	}
 }
@@ -597,13 +636,18 @@ func summarizeOutput(output string) string {
 	return output
 }
 
-func isAddrUp(addr string) bool {
-	conn, err := net.DialTimeout("tcp", addr, statusDialTimeout)
+func isHealthUp(healthURL string) bool {
+	client := &http.Client{Timeout: statusHTTPTimeout}
+	req, err := http.NewRequest(http.MethodGet, healthURL, nil)
 	if err != nil {
 		return false
 	}
-	_ = conn.Close()
-	return true
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode >= 200 && resp.StatusCode < 300
 }
 
 func findServiceInstance(cfg fileConfig, serviceID, instanceName string) (serviceConfig, serviceInstance, error) {
@@ -758,6 +802,16 @@ func loadConfig(path string) (fileConfig, error) {
 	}
 	if decoder.More() {
 		return fileConfig{}, errors.New("config has trailing data")
+	}
+	for _, service := range cfg.Services {
+		for _, instance := range service.Instances {
+			if strings.TrimSpace(instance.HealthURL) == "" {
+				return fileConfig{}, fmt.Errorf("healthUrl is required for %s/%s", service.ID, instance.Name)
+			}
+			if !strings.HasPrefix(strings.TrimSpace(instance.HealthURL), "http://") && !strings.HasPrefix(strings.TrimSpace(instance.HealthURL), "https://") {
+				return fileConfig{}, fmt.Errorf("healthUrl must start with http:// or https:// for %s/%s", service.ID, instance.Name)
+			}
+		}
 	}
 	return cfg, nil
 }

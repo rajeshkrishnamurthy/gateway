@@ -369,6 +369,8 @@ func newMux(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry, ui *uiSer
 	if ui != nil {
 		sendResult = ui.templates.sendResult
 	}
+	mux.HandleFunc("/healthz", handleHealthz)
+	mux.HandleFunc("/readyz", handleReadyz)
 	mux.HandleFunc("/sms/send", handleSMSSend(gw, metricsRegistry, sendResult))
 	mux.HandleFunc("/metrics", handleMetrics(metricsRegistry))
 	if ui != nil {
@@ -379,6 +381,24 @@ func newMux(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry, ui *uiSer
 		mux.HandleFunc("/ui/metrics", ui.handleUIMetrics)
 	}
 	return mux
+}
+
+func handleHealthz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
+}
+
+func handleReadyz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
 }
 
 func handleSMSSend(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry, sendResult *template.Template) http.HandlerFunc {

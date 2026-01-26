@@ -17,6 +17,7 @@ Then open `http://localhost:8070/ui`.
 The config file is `conf/services_health.json` and supports full-line `#` comments only.
 
 - Services and instances are declared in the file.
+- Each instance must define `healthUrl`.
 - Start and stop commands are explicit strings; placeholders `{config}`, `{addr}`, `{port}` are replaced at runtime.
 - Relative paths are resolved from the current working directory.
 - Config viewing is read-only and limited to files under `conf/`.
@@ -24,7 +25,7 @@ The config file is `conf/services_health.json` and supports full-line `#` commen
 
 ## Health Checks
 
-Health checks are TCP connectivity only. A service is "up" when its port is listening.
+Health checks are HTTP GET requests to each instance `healthUrl`. A service is "up" when the health URL returns a 2xx response.
 
 ## UI Notes
 

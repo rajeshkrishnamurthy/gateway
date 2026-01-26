@@ -12,6 +12,7 @@
 - Config file is `conf/services_health.json` and allows full-line `#` comments.
 - For the MVP, the config is Docker Compose-only (start/stop commands call `docker compose`).
 - Services, instances, and start/stop commands are defined in config.
+- Each instance requires `healthUrl` for HTTP health checks.
 - Placeholder tokens are `{config}`, `{addr}`, `{port}` and must remain explicit.
 - Config viewing is read-only and restricted to files under `conf/`.
 
