@@ -100,3 +100,28 @@ func TestSingleToggleUsesToggleInstance(t *testing.T) {
 		t.Fatalf("expected toggle to be down when toggle instance is down")
 	}
 }
+
+func TestResolveConfigPath(t *testing.T) {
+	baseDir := t.TempDir()
+	configDir := filepath.Join(baseDir, "conf")
+	if err := os.Mkdir(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir conf: %v", err)
+	}
+	configFile := filepath.Join(configDir, "config.json")
+	if err := os.WriteFile(configFile, []byte("{}\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	full, display, err := resolveConfigPath(baseDir, configDir, "conf/config.json")
+	if err != nil {
+		t.Fatalf("resolveConfigPath: %v", err)
+	}
+	if full != configFile {
+		t.Fatalf("expected full path %q, got %q", configFile, full)
+	}
+	if display != filepath.ToSlash("conf/config.json") {
+		t.Fatalf("expected display path conf/config.json, got %q", display)
+	}
+	if _, _, err := resolveConfigPath(baseDir, configDir, "other/config.json"); err == nil {
+		t.Fatalf("expected error for path outside conf")
+	}
+}

@@ -118,6 +118,7 @@
     {
       "id": "haproxy",
       "label": "HAProxy",
+      "defaultConfigPath": "conf/haproxy.cfg",
       "startCommand": [
         "haproxy",
         "-f",

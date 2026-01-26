@@ -62,13 +62,16 @@ type serviceInstance struct {
 type uiTemplates struct {
 	overview *template.Template
 	services *template.Template
+	config   *template.Template
 }
 
 type uiServer struct {
-	templates uiTemplates
-	staticDir string
-	config    fileConfig
-	title     string
+	templates  uiTemplates
+	staticDir  string
+	config     fileConfig
+	title      string
+	workingDir string
+	configDir  string
 }
 
 type overviewView struct {
@@ -79,6 +82,15 @@ type overviewView struct {
 type servicesView struct {
 	Services []serviceView
 	Notice   string
+}
+
+type configView struct {
+	Hidden       bool
+	ServiceLabel string
+	InstanceName string
+	DisplayPath  string
+	Content      string
+	Error        string
 }
 
 type actionResult struct {
@@ -99,6 +111,7 @@ type serviceView struct {
 	SingleToggle       bool
 	ToggleInstanceName string
 	ToggleIsUp         bool
+	ToggleConfigPath   string
 }
 
 type instanceView struct {
@@ -132,6 +145,8 @@ func main() {
 	mux.HandleFunc("/ui/services", ui.handleServices)
 	mux.HandleFunc("/ui/services/start", ui.handleStart)
 	mux.HandleFunc("/ui/services/stop", ui.handleStop)
+	mux.HandleFunc("/ui/config", ui.handleConfig)
+	mux.HandleFunc("/ui/config/clear", ui.handleConfigClear)
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(ui.staticDir))))
 
 	log.Printf("services health listening on %s configPath=%q", *listenAddr, *configPath)
@@ -153,15 +168,29 @@ func newUIServer(cfg fileConfig) (*uiServer, error) {
 	if err != nil {
 		return nil, err
 	}
+	workingDir, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	configDir := filepath.Join(workingDir, "conf")
+	info, err := os.Stat(configDir)
+	if err != nil {
+		return nil, fmt.Errorf("config dir not found: %s", configDir)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("config dir is not a directory: %s", configDir)
+	}
 	templates, err := loadUITemplates(uiDir)
 	if err != nil {
 		return nil, err
 	}
 	return &uiServer{
-		templates: templates,
-		staticDir: filepath.Join(uiDir, "static"),
-		config:    cfg,
-		title:     "Command Center",
+		templates:  templates,
+		staticDir:  filepath.Join(uiDir, "static"),
+		config:     cfg,
+		title:      "Command Center",
+		workingDir: workingDir,
+		configDir:  configDir,
 	}, nil
 }
 
@@ -193,7 +222,11 @@ func loadUITemplates(uiDir string) (uiTemplates, error) {
 	if err != nil {
 		return uiTemplates{}, err
 	}
-	return uiTemplates{overview: overview, services: services}, nil
+	config, err := template.ParseFiles(filepath.Join(uiDir, "health_config.tmpl"))
+	if err != nil {
+		return uiTemplates{}, err
+	}
+	return uiTemplates{overview: overview, services: services, config: config}, nil
 }
 
 func (u *uiServer) handleOverview(w http.ResponseWriter, r *http.Request) {
@@ -245,6 +278,60 @@ func (u *uiServer) handleStop(w http.ResponseWriter, r *http.Request) {
 	overrides := buildOverrides(result)
 	view := buildServicesView(u.config, result.notice, overrides)
 	renderFragment(w, u.templates.services, "health_services.tmpl", view)
+}
+
+func (u *uiServer) handleConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	serviceID := strings.TrimSpace(r.URL.Query().Get("serviceId"))
+	instanceName := strings.TrimSpace(r.URL.Query().Get("instanceName"))
+	if serviceID == "" || instanceName == "" {
+		u.renderConfigError(w, "service and instance are required")
+		return
+	}
+	service, instance, err := findServiceInstance(u.config, serviceID, instanceName)
+	if err != nil {
+		u.renderConfigError(w, err.Error())
+		return
+	}
+	configPath := strings.TrimSpace(defaultConfigPathFor(service, instance))
+	if configPath == "" {
+		u.renderConfigError(w, "config not configured for this instance")
+		return
+	}
+	fullPath, displayPath, err := resolveConfigPath(u.workingDir, u.configDir, configPath)
+	if err != nil {
+		u.renderConfigError(w, err.Error())
+		return
+	}
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		u.renderConfigError(w, fmt.Sprintf("read failed: %v", err))
+		return
+	}
+	view := configView{
+		ServiceLabel: service.Label,
+		InstanceName: instance.Name,
+		DisplayPath:  displayPath,
+		Content:      string(data),
+	}
+	renderFragment(w, u.templates.config, "health_config.tmpl", view)
+}
+
+func (u *uiServer) handleConfigClear(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	view := configView{Hidden: true}
+	renderFragment(w, u.templates.config, "health_config.tmpl", view)
+}
+
+func (u *uiServer) renderConfigError(w http.ResponseWriter, message string) {
+	view := configView{Error: message}
+	renderFragment(w, u.templates.config, "health_config.tmpl", view)
 }
 
 func (u *uiServer) runAction(serviceID, instanceName, configInput, addrInput string, isStart bool) actionResult {
@@ -370,6 +457,13 @@ func buildServicesView(cfg fileConfig, notice string, overrides map[string]bool)
 		if toggleInstance == "" && len(service.Instances) > 0 {
 			toggleInstance = service.Instances[0].Name
 		}
+		toggleConfigPath := ""
+		for _, inst := range instances {
+			if inst.Name == toggleInstance {
+				toggleConfigPath = inst.ConfigPath
+				break
+			}
+		}
 		toggleIsUp := false
 		if service.SingleToggle {
 			for _, inst := range instances {
@@ -397,6 +491,7 @@ func buildServicesView(cfg fileConfig, notice string, overrides map[string]bool)
 			SingleToggle:       service.SingleToggle,
 			ToggleInstanceName: toggleInstance,
 			ToggleIsUp:         toggleIsUp,
+			ToggleConfigPath:   toggleConfigPath,
 		})
 	}
 	return servicesView{Services: services, Notice: notice}
@@ -407,6 +502,36 @@ func defaultConfigPathFor(service serviceConfig, instance serviceInstance) strin
 		return instance.ConfigPath
 	}
 	return service.DefaultConfigPath
+}
+
+func resolveConfigPath(workingDir, configDir, input string) (string, string, error) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return "", "", errors.New("config path is required")
+	}
+	if filepath.IsAbs(input) {
+		return "", "", errors.New("config path must be relative")
+	}
+	cleaned := filepath.Clean(input)
+	if cleaned == "." || strings.HasPrefix(cleaned, "..") {
+		return "", "", errors.New("config path must be under conf/")
+	}
+	fullPath := filepath.Join(workingDir, cleaned)
+	rel, err := filepath.Rel(configDir, fullPath)
+	if err != nil {
+		return "", "", errors.New("config path must be under conf/")
+	}
+	if rel == "." || strings.HasPrefix(rel, "..") {
+		return "", "", errors.New("config path must be under conf/")
+	}
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		return "", "", err
+	}
+	if info.IsDir() {
+		return "", "", errors.New("config path is a directory")
+	}
+	return fullPath, filepath.ToSlash(cleaned), nil
 }
 
 func waitForAddrUp(addr string, timeout time.Duration, exitCh <-chan error) error {
