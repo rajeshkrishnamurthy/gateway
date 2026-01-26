@@ -1,6 +1,6 @@
 <section id="health-services" hx-get="/ui/services" hx-trigger="every 5m" hx-swap="outerHTML">
   {{if .Notice}}
-  <div class="note">{{.Notice}}</div>
+  <div class="note note-console">{{.Notice}}</div>
   {{end}}
 
   <section class="panel health-panel">
@@ -14,7 +14,7 @@
           <tr>
             <th>Component</th>
             <th>Instances</th>
-            <th>Actions</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -44,53 +44,67 @@
                 {{if $service.SingleToggle}}
                 <div class="health-action-row">
                   <span class="health-action-label">Process</span>
-                  {{if $service.ToggleIsUp}}
-                  {{if $service.HasStop}}
-                  <form hx-post="/ui/services/stop" hx-target="#health-services" hx-swap="outerHTML">
-                    <input type="hidden" name="serviceId" value="{{$service.ID}}">
-                    <input type="hidden" name="instanceName" value="{{$service.ToggleInstanceName}}">
-                    <button class="toggle is-on" type="submit" role="switch" aria-checked="true">On</button>
-                  </form>
-                  {{else}}
-                  <button class="toggle is-on" type="button" disabled>On</button>
-                  {{end}}
-                  {{else}}
-                  {{if $service.HasStart}}
-                  <form hx-post="/ui/services/start" hx-target="#health-services" hx-swap="outerHTML">
-                    <input type="hidden" name="serviceId" value="{{$service.ID}}">
-                    <input type="hidden" name="instanceName" value="{{$service.ToggleInstanceName}}">
-                    <button class="toggle is-off" type="submit" role="switch" aria-checked="false">Off</button>
-                  </form>
-                  {{else}}
-                  <button class="toggle is-off" type="button" disabled>Off</button>
-                  {{end}}
-                  {{end}}
+                  <div class="health-action-buttons">
+                    {{if $service.ToggleIsUp}}
+                    {{if $service.HasStop}}
+                    <form hx-post="/ui/services/stop" hx-target="#health-services" hx-swap="outerHTML">
+                      <input type="hidden" name="serviceId" value="{{$service.ID}}">
+                      <input type="hidden" name="instanceName" value="{{$service.ToggleInstanceName}}">
+                      <button class="toggle is-on" type="submit" role="switch" aria-checked="true">On</button>
+                    </form>
+                    {{else}}
+                    <button class="toggle is-on" type="button" disabled>On</button>
+                    {{end}}
+                    {{else}}
+                    {{if $service.HasStart}}
+                    <form hx-post="/ui/services/start" hx-target="#health-services" hx-swap="outerHTML">
+                      <input type="hidden" name="serviceId" value="{{$service.ID}}">
+                      <input type="hidden" name="instanceName" value="{{$service.ToggleInstanceName}}">
+                      <button class="toggle is-off" type="submit" role="switch" aria-checked="false">Off</button>
+                    </form>
+                    {{else}}
+                    <button class="toggle is-off" type="button" disabled>Off</button>
+                    {{end}}
+                    {{end}}
+                    {{if $service.ToggleConfigPath}}
+                    <button class="link-button" type="button" hx-get="/ui/config?serviceId={{$service.ID}}&instanceName={{$service.ToggleInstanceName}}" hx-target="#config-view" hx-swap="outerHTML">Config</button>
+                    {{else}}
+                    <span class="link-button placeholder" aria-hidden="true">Config</span>
+                    {{end}}
+                  </div>
                 </div>
                 {{else}}
                 {{range .Instances}}
                 <div class="health-action-row">
                   <span class="health-action-label">{{.Name}}</span>
-                  {{if .IsUp}}
-                  {{if $service.HasStop}}
-                  <form hx-post="/ui/services/stop" hx-target="#health-services" hx-swap="outerHTML">
-                    <input type="hidden" name="serviceId" value="{{$service.ID}}">
-                    <input type="hidden" name="instanceName" value="{{.Name}}">
-                    <button class="toggle is-on" type="submit" role="switch" aria-checked="true">On</button>
-                  </form>
-                  {{else}}
-                  <button class="toggle is-on" type="button" disabled>On</button>
-                  {{end}}
-                  {{else}}
-                  {{if $service.HasStart}}
-                  <form hx-post="/ui/services/start" hx-target="#health-services" hx-swap="outerHTML">
-                    <input type="hidden" name="serviceId" value="{{$service.ID}}">
-                    <input type="hidden" name="instanceName" value="{{.Name}}">
-                    <button class="toggle is-off" type="submit" role="switch" aria-checked="false">Off</button>
-                  </form>
-                  {{else}}
-                  <button class="toggle is-off" type="button" disabled>Off</button>
-                  {{end}}
-                  {{end}}
+                  <div class="health-action-buttons">
+                    {{if .IsUp}}
+                    {{if $service.HasStop}}
+                    <form hx-post="/ui/services/stop" hx-target="#health-services" hx-swap="outerHTML">
+                      <input type="hidden" name="serviceId" value="{{$service.ID}}">
+                      <input type="hidden" name="instanceName" value="{{.Name}}">
+                      <button class="toggle is-on" type="submit" role="switch" aria-checked="true">On</button>
+                    </form>
+                    {{else}}
+                    <button class="toggle is-on" type="button" disabled>On</button>
+                    {{end}}
+                    {{else}}
+                    {{if $service.HasStart}}
+                    <form hx-post="/ui/services/start" hx-target="#health-services" hx-swap="outerHTML">
+                      <input type="hidden" name="serviceId" value="{{$service.ID}}">
+                      <input type="hidden" name="instanceName" value="{{.Name}}">
+                      <button class="toggle is-off" type="submit" role="switch" aria-checked="false">Off</button>
+                    </form>
+                    {{else}}
+                    <button class="toggle is-off" type="button" disabled>Off</button>
+                    {{end}}
+                    {{end}}
+                    {{if .ConfigPath}}
+                    <button class="link-button" type="button" hx-get="/ui/config?serviceId={{$service.ID}}&instanceName={{.Name}}" hx-target="#config-view" hx-swap="outerHTML">Config</button>
+                    {{else}}
+                    <span class="link-button placeholder" aria-hidden="true">Config</span>
+                    {{end}}
+                  </div>
                 </div>
                 {{end}}
                 {{end}}
@@ -108,6 +122,8 @@
       </table>
     </div>
   </section>
+
+  <section id="config-view"></section>
 
   <section class="panel health-panel health-ui-panel">
     <div class="health-header">

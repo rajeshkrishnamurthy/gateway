@@ -1,0 +1,19 @@
+<section id="config-view">
+  {{if .Hidden}}
+  {{else}}
+  <section class="panel health-panel health-config">
+    <div class="health-header">
+      <h2>Config: {{.ServiceLabel}} / {{.InstanceName}}</h2>
+      <button class="link-button" type="button" hx-get="/ui/config/clear" hx-target="#config-view" hx-swap="outerHTML">Hide</button>
+    </div>
+    {{if .Error}}
+    <div class="note note-console">{{.Error}}</div>
+    {{else}}
+    <div class="config-meta">
+      <span class="muted">{{.DisplayPath}}</span>
+    </div>
+    <pre class="config-content note-console">{{.Content}}</pre>
+    {{end}}
+  </section>
+  {{end}}
+</section>

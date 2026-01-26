@@ -10,9 +10,5 @@
     </nav>
   </header>
 
-  <section class="note">
-    Status checks use TCP connectivity to each configured service. Relative paths are resolved from the health console working directory.
-  </section>
-
   {{template "health_services.tmpl" .Services}}
 </main>
