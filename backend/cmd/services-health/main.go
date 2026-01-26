@@ -707,7 +707,7 @@ func renderShell(w http.ResponseWriter, fragment []byte, title string) {
 		log.Printf("write shell fragment: %v", err)
 		return
 	}
-	if _, err := io.WriteString(w, `</div><script src="/static/htmx.min.js"></script><script src="/static/json-enc.js"></script><script src="/static/theme.js"></script></body></html>`); err != nil {
+	if _, err := io.WriteString(w, `</div><script src="/static/htmx.min.js"></script><script src="/static/theme.js"></script></body></html>`); err != nil {
 		log.Printf("write shell end: %v", err)
 	}
 }

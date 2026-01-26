@@ -14,6 +14,6 @@
 - Placeholder tokens are `{config}`, `{addr}`, `{port}` and must remain explicit.
 
 ## UI
-- HTML + HTMX only; no custom JavaScript.
+- HTML + HTMX only; no custom JavaScript beyond a minimal theme toggle.
 - Templates live under `../ui/` and are fragments, not full documents.
 - Provide guidance for relative paths near config inputs.
