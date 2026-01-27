@@ -9,7 +9,7 @@
 - Health checks are TCP reachability to configured addresses.
 
 ## Config
-- Config file is `conf/services_health.json` and allows full-line `#` comments.
+- Config file is `conf/docker/services_health.json` and allows full-line `#` comments.
 - For the MVP, the config is Docker Compose-only (start/stop commands call `docker compose`).
 - Services, instances, and start/stop commands are defined in config.
 - Each instance requires `healthUrl` for HTTP health checks.

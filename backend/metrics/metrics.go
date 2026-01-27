@@ -24,6 +24,7 @@ type Registry struct {
 	rejectedInvalidRecipient   uint64
 	rejectedInvalidMessage     uint64
 	rejectedProviderFailure    uint64
+	rejectedUnregisteredToken  uint64
 
 	providerFailures uint64
 	providerTimeouts uint64
@@ -80,6 +81,8 @@ func (r *Registry) ObserveRequest(outcome, reason string, duration time.Duration
 		case "provider_failure":
 			r.rejectedProviderFailure++
 			r.providerFailures++
+		case "unregistered_token":
+			r.rejectedUnregisteredToken++
 		}
 	}
 }
@@ -116,6 +119,7 @@ func (r *Registry) WritePrometheus(w io.Writer) {
 	rejectedInvalidRecipient := r.rejectedInvalidRecipient
 	rejectedInvalidMessage := r.rejectedInvalidMessage
 	rejectedProviderFailure := r.rejectedProviderFailure
+	rejectedUnregisteredToken := r.rejectedUnregisteredToken
 	providerFailures := r.providerFailures
 	providerTimeouts := r.providerTimeouts
 	providerPanics := r.providerPanics
@@ -151,6 +155,7 @@ func (r *Registry) WritePrometheus(w io.Writer) {
 	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "invalid_recipient", rejectedInvalidRecipient)
 	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "invalid_message", rejectedInvalidMessage)
 	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "provider_failure", rejectedProviderFailure)
+	fmt.Fprintf(w, "gateway_rejections_total{%s,reason=%q} %d\n", providerLabel, "unregistered_token", rejectedUnregisteredToken)
 
 	fmt.Fprintf(w, "# HELP gateway_provider_failures_total Provider failures.\n")
 	fmt.Fprintf(w, "# TYPE gateway_provider_failures_total counter\n")

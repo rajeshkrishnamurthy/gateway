@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	defaultConfigPath  = "conf/services_health.json"
+	defaultConfigPath  = "conf/docker/services_health.json"
 	defaultListenAddr  = ":8070"
 	statusHTTPTimeout  = 2 * time.Second
 	startWaitTimeout   = 10 * time.Second
@@ -591,7 +591,7 @@ func waitForHealthUp(healthURL string, timeout time.Duration, exitCh <-chan erro
 			if err != nil {
 				return fmt.Errorf("process exited: %v", err)
 			}
-			return errors.New("process exited")
+			continue
 		case <-ticker.C:
 			continue
 		case <-timer.C:

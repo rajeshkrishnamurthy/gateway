@@ -63,7 +63,7 @@ Gateway response (JSON):
   "referenceId": "string",
   "status": "accepted|rejected",
   "gatewayMessageId": "string (present when accepted)",
-  "reason": "invalid_request|duplicate_reference|provider_failure (present when rejected)"
+  "reason": "invalid_request|duplicate_reference|provider_failure|unregistered_token (present when rejected)"
 }
 ```
 
@@ -122,26 +122,26 @@ Latency histograms share buckets at 0.1s, 0.25s, 0.5s, 1s, 2.5s, and 5s.
 
 The gateway stack is intentionally small and explicit:
 
-- Gateways: `cmd/sms-gateway` and `cmd/push-gateway` run as containers. Provider semantics and instance-agnostic settings (like `grafanaDashboardUrl`) live in `conf/config_docker.json` and `conf/config_push_docker.json`. Secrets are provided via environment variables only.
-- HAProxy: Docker Compose uses `conf/haproxy_docker.cfg` to front stable ports and route to multiple gateway instances. Gateways remain unaware of peers.
-- Prometheus: Docker Compose uses `conf/prometheus_docker.yml` to scrape gateway instances directly (do not scrape HAProxy). Jobs separate SMS vs push.
+- Gateways: `cmd/sms-gateway` and `cmd/push-gateway` run as containers. Provider semantics and instance-agnostic settings (like `grafanaDashboardUrl`) live in `conf/docker/config_docker.json` and `conf/docker/config_push_docker.json`. Secrets are provided via environment variables only.
+- HAProxy: Docker Compose uses `conf/docker/haproxy_docker.cfg` to front stable ports and route to multiple gateway instances. Gateways remain unaware of peers.
+- Prometheus: Docker Compose uses `conf/docker/prometheus_docker.yml` to scrape gateway instances directly (do not scrape HAProxy). Jobs separate SMS vs push.
 - Grafana: provisioned dashboards live under `conf/grafana/dashboards`. The gateway UI Metrics link points to `grafanaDashboardUrl` from the gateway config (defaults to the SMS/push dashboard URLs).
 
 ## Services health console
 
-The services health console is a host-run UI for checking container status (up/down) and running Docker Compose start/stop commands defined in `conf/services_health.json`.
+The services health console is a host-run UI for checking container status (up/down) and running Docker Compose start/stop commands defined in `conf/docker/services_health.json`.
 
 Start the console from `backend/`:
 
 ```sh
-go run ./cmd/services-health -config conf/services_health.json -addr :8070
+go run ./cmd/services-health -config conf/docker/services_health.json -addr :8070
 ```
 
 Open `http://localhost:8070/ui`.
 
 Notes:
 - Status checks use HTTP GET to each instance `healthUrl` (2xx = up).
-- Each instance in `conf/services_health.json` must define `healthUrl`.
+- Each instance in `conf/docker/services_health.json` must define `healthUrl`.
 - Start/stop actions execute the command arrays from the config with `{config}`, `{addr}`, and `{port}` placeholder substitution.
 - Relative paths are resolved from the health console working directory.
 - Docker Compose must be available on the host PATH.
@@ -162,14 +162,14 @@ Then open:
 
 Compose uses:
 
-- `conf/config_docker.json` and `conf/config_push_docker.json` for gateways.
-- `conf/admin_portal_docker.json` for the admin portal (Command Center hosted on `host.docker.internal:8070`).
-- `conf/prometheus_docker.yml` and `conf/haproxy_docker.cfg` for infra.
+- `conf/docker/config_docker.json` and `conf/docker/config_push_docker.json` for gateways.
+- `conf/docker/admin_portal_docker.json` for the admin portal (Command Center hosted on `host.docker.internal:8070`).
+- `conf/docker/prometheus_docker.yml` and `conf/docker/haproxy_docker.cfg` for infra.
 
 If you want the Command Center inside the admin portal while running Docker Compose, start it on the host from `backend/`:
 
 ```sh
-go run ./cmd/services-health -config conf/services_health.json -addr :8070
+go run ./cmd/services-health -config conf/docker/services_health.json -addr :8070
 ```
 
 The Docker admin portal config points at `http://host.docker.internal:8070` for the Command Center URL.
@@ -178,7 +178,7 @@ The gateway containers run `go run` using the `golang:tip` image to match the `g
 
 ## Scaling gateways (Docker Compose)
 
-To run more instances, add services in `docker-compose.yml` and update `conf/haproxy_docker.cfg` and `conf/prometheus_docker.yml` to include the new backends and scrape targets. Keep host ports unique when exposing additional instances.
+To run more instances, add services in `docker-compose.yml` and update `conf/docker/haproxy_docker.cfg` and `conf/docker/prometheus_docker.yml` to include the new backends and scrape targets. Keep host ports unique when exposing additional instances.
 
 ## Gateway smoke test (Docker)
 
@@ -220,7 +220,7 @@ Note: the model provider intentionally adds a random 50ms-2s delay for manual la
 
 ## sms24x7 provider
 
-Set the API key via `SMS24X7_API_KEY` in the environment (do not put secrets in config files). Update `conf/config_docker.json` to use this provider.
+Set the API key via `SMS24X7_API_KEY` in the environment (do not put secrets in config files). Update `conf/docker/config_docker.json` to use this provider.
 
 ```json
 {
@@ -235,7 +235,7 @@ Set the API key via `SMS24X7_API_KEY` in the environment (do not put secrets in 
 
 ## smskarix provider
 
-Set the API key via `SMSKARIX_API_KEY` in the environment (do not put secrets in config files). Update `conf/config_docker.json` to use this provider.
+Set the API key via `SMSKARIX_API_KEY` in the environment (do not put secrets in config files). Update `conf/docker/config_docker.json` to use this provider.
 
 ```json
 {
@@ -250,7 +250,7 @@ Set the API key via `SMSKARIX_API_KEY` in the environment (do not put secrets in
 
 ## smsinfobip provider
 
-Set the API key via `SMSINFOBIP_API_KEY` in the environment (do not put secrets in config files). Update `conf/config_docker.json` to use this provider.
+Set the API key via `SMSINFOBIP_API_KEY` in the environment (do not put secrets in config files). Update `conf/docker/config_docker.json` to use this provider.
 
 ```json
 {
@@ -264,7 +264,7 @@ Set the API key via `SMSINFOBIP_API_KEY` in the environment (do not put secrets 
 
 ## push gateway (FCM)
 
-Set `PUSH_FCM_CREDENTIAL_JSON_PATH` (preferred) or `PUSH_FCM_BEARER_TOKEN` in the environment (do not put secrets in config files). Optional: `PUSH_FCM_SCOPE_URL` overrides the default scope. Update `conf/config_push_docker.json` to use this provider.
+Set `PUSH_FCM_CREDENTIAL_JSON_PATH` (preferred) or `PUSH_FCM_BEARER_TOKEN` in the environment (do not put secrets in config files). Even though `PUSH_FCM_CREDENTIAL_JSON_PATH` is a file path, keep it in env so the secret stays outside config and the path can vary per runtime. Optional: `PUSH_FCM_SCOPE_URL` overrides the default scope. Set `PUSH_FCM_DEBUG=true` to log the FCM error response body (truncated) for non-2xx responses while debugging. Update `conf/docker/config_push_docker.json` to use this provider.
 
 ```json
 {

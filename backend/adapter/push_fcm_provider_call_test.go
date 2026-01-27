@@ -97,6 +97,31 @@ func TestPushFCMProviderNon2xx(t *testing.T) {
 	}
 }
 
+func TestPushFCMProviderUnregisteredToken(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"error":{"code":404,"details":[{"@type":"type.googleapis.com/google.firebase.fcm.v1.FcmError","errorCode":"UNREGISTERED"}]}}`)
+	}))
+	defer provider.Close()
+
+	providerCall := PushFCMProviderCall(provider.URL, "token-2", fcmProviderConnectTimeout)
+	resp, err := providerCall(context.Background(), gateway.PushRequest{
+		ReferenceID: "ref-unreg",
+		Token:       "device-token",
+		Body:        "hello",
+	})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if resp.Status != "rejected" {
+		t.Fatalf("expected rejected status, got %q", resp.Status)
+	}
+	if resp.Reason != "unregistered_token" {
+		t.Fatalf("expected unregistered_token, got %q", resp.Reason)
+	}
+}
+
 func TestPushFCMProviderMissingURL(t *testing.T) {
 	providerCall := PushFCMProviderCall("", "token", fcmProviderConnectTimeout)
 	if providerCall != nil {

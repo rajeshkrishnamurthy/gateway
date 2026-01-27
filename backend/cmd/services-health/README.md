@@ -7,14 +7,14 @@ This command provides a small operations console for the gateways and supporting
 From `backend/`:
 
 ```
-go run ./cmd/services-health -config conf/services_health.json -addr :8070
+go run ./cmd/services-health -config conf/docker/services_health.json -addr :8070
 ```
 
 Then open `http://localhost:8070/ui`.
 
 ## Configuration
 
-The config file is `conf/services_health.json` and supports full-line `#` comments only.
+The config file is `conf/docker/services_health.json` and supports full-line `#` comments only.
 
 - Services and instances are declared in the file.
 - Each instance must define `healthUrl`.
@@ -26,6 +26,7 @@ The config file is `conf/services_health.json` and supports full-line `#` commen
 ## Health Checks
 
 Health checks are HTTP GET requests to each instance `healthUrl`. A service is "up" when the health URL returns a 2xx response.
+
 
 ## UI Notes
 

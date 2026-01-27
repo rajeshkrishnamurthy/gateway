@@ -33,7 +33,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./backend/conf/prometheus_docker.yml:/etc/prometheus/prometheus.yml:ro
+      - ./backend/conf/docker/prometheus_docker.yml:/etc/prometheus/prometheus.yml:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/ready"]
       interval: 5s
@@ -55,7 +55,7 @@ services:
 
   sms-gateway-1:
     <<: *go-service
-    command: ["go", "run", "./cmd/sms-gateway", "-config", "conf/config_docker.json", "-addr", ":8080"]
+    command: ["go", "run", "./cmd/sms-gateway", "-config", "conf/docker/config_docker.json", "-addr", ":8080"]
     depends_on:
       - model-provider
     ports:
@@ -68,7 +68,7 @@ services:
       start_period: 5s
   sms-gateway-2:
     <<: *go-service
-    command: ["go", "run", "./cmd/sms-gateway", "-config", "conf/config_docker.json", "-addr", ":8080"]
+    command: ["go", "run", "./cmd/sms-gateway", "-config", "conf/docker/config_docker.json", "-addr", ":8080"]
     depends_on:
       - model-provider
     ports:
@@ -83,8 +83,9 @@ services:
   push-gateway-1:
     <<: *go-service
     environment:
-      PUSH_FCM_BEARER_TOKEN: "dev"
-    command: ["go", "run", "./cmd/push-gateway", "-config", "conf/config_push_docker.json", "-addr", ":8081"]
+      PUSH_FCM_CREDENTIAL_JSON_PATH: "/app/backend/conf/firebase.json"
+      PUSH_FCM_DEBUG: "${PUSH_FCM_DEBUG}"
+    command: ["go", "run", "./cmd/push-gateway", "-config", "conf/docker/config_push_docker.json", "-addr", ":8081"]
     ports:
       - "19080:8081"
     healthcheck:
@@ -96,8 +97,9 @@ services:
   push-gateway-2:
     <<: *go-service
     environment:
-      PUSH_FCM_BEARER_TOKEN: "dev"
-    command: ["go", "run", "./cmd/push-gateway", "-config", "conf/config_push_docker.json", "-addr", ":8081"]
+      PUSH_FCM_CREDENTIAL_JSON_PATH: "/app/backend/conf/firebase.json"
+      PUSH_FCM_DEBUG: "${PUSH_FCM_DEBUG}"
+    command: ["go", "run", "./cmd/push-gateway", "-config", "conf/docker/config_push_docker.json", "-addr", ":8081"]
     ports:
       - "19081:8081"
     healthcheck:
@@ -120,7 +122,7 @@ services:
       - "8081:8081"
       - "8404:8404"
     volumes:
-      - ./backend/conf/haproxy_docker.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./backend/conf/docker/haproxy_docker.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     depends_on:
       - sms-gateway-1
       - sms-gateway-2
@@ -135,7 +137,7 @@ services:
 
   admin-portal:
     <<: *go-service
-    command: ["go", "run", "./cmd/admin-portal", "-config", "conf/admin_portal_docker.json", "-addr", ":8090"]
+    command: ["go", "run", "./cmd/admin-portal", "-config", "conf/docker/admin_portal_docker.json", "-addr", ":8090"]
     ports:
       - "8090:8090"
     depends_on:

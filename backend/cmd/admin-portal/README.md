@@ -15,14 +15,14 @@ Then open `http://localhost:8090/ui`.
 If you want the Command Center embedded in the portal while running Docker Compose, start it on the host with:
 
 ```
-go run ./cmd/services-health -config conf/services_health.json -addr :8070
+go run ./cmd/services-health -config conf/docker/services_health.json -addr :8070
 ```
 
 The Docker admin portal config points at `http://host.docker.internal:8070` for the Command Center URL.
 
 ## Configuration
 
-Docker Compose uses `conf/admin_portal_docker.json`.
+Docker Compose uses `conf/docker/admin_portal_docker.json`.
 
 `conf/admin_portal.json` is retained as a future non-Docker starting point but is not maintained for the MVP.
 

@@ -35,16 +35,16 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 6,
         "x": 0,
-        "y": 0
+        "y": 0,
+        "w": 6,
+        "h": 3
       },
       "id": 1,
       "options": {
         "colorMode": "none",
         "graphMode": "none",
-        "justifyMode": "auto",
+        "justifyMode": "center",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
@@ -53,11 +53,15 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "text": {
+          "titleSize": 12,
+          "valueSize": 24
+        }
       },
       "targets": [
         {
-          "expr": "sum(increase(gateway_requests_total{provider=~\"$provider\"}[$__range]))",
+          "expr": "sum(increase(gateway_outcomes_total{provider=~\"$provider\"}[$__range]))",
           "refId": "A"
         }
       ],
@@ -96,16 +100,16 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 6,
         "x": 6,
-        "y": 0
+        "y": 0,
+        "w": 6,
+        "h": 3
       },
       "id": 2,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "justifyMode": "auto",
+        "justifyMode": "center",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
@@ -114,11 +118,15 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "text": {
+          "titleSize": 12,
+          "valueSize": 24
+        }
       },
       "targets": [
         {
-          "expr": "100 * sum(increase(gateway_outcomes_total{provider=~\"$provider\",outcome=\"accepted\"}[$__range])) / clamp_min(sum(increase(gateway_requests_total{provider=~\"$provider\"}[$__range])), 1)",
+          "expr": "100 * sum(increase(gateway_outcomes_total{provider=~\"$provider\",outcome=\"accepted\"}[$__range])) / clamp_min(sum(increase(gateway_outcomes_total{provider=~\"$provider\"}[$__range])), 1)",
           "refId": "A"
         }
       ],
@@ -157,16 +165,16 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 6,
         "x": 12,
-        "y": 0
+        "y": 0,
+        "w": 12,
+        "h": 3
       },
       "id": 3,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "justifyMode": "auto",
+        "justifyMode": "center",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
@@ -175,11 +183,15 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "text": {
+          "titleSize": 12,
+          "valueSize": 24
+        }
       },
       "targets": [
         {
-          "expr": "100 * sum(increase(gateway_outcomes_total{provider=~\"$provider\",outcome=\"rejected\"}[$__range])) / clamp_min(sum(increase(gateway_requests_total{provider=~\"$provider\"}[$__range])), 1)",
+          "expr": "100 * sum(increase(gateway_outcomes_total{provider=~\"$provider\",outcome=\"rejected\"}[$__range])) / clamp_min(sum(increase(gateway_outcomes_total{provider=~\"$provider\"}[$__range])), 1)",
           "refId": "A"
         }
       ],
@@ -218,16 +230,16 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 6,
         "x": 18,
-        "y": 0
+        "y": 3,
+        "w": 6,
+        "h": 3
       },
       "id": 4,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "justifyMode": "auto",
+        "justifyMode": "center",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
@@ -236,7 +248,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "text": {
+          "titleSize": 12,
+          "valueSize": 24
+        }
       },
       "targets": [
         {
@@ -277,16 +293,16 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 8,
         "x": 0,
-        "y": 4
+        "y": 3,
+        "w": 6,
+        "h": 3
       },
       "id": 5,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "justifyMode": "auto",
+        "justifyMode": "center",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
@@ -295,7 +311,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "text": {
+          "titleSize": 12,
+          "valueSize": 24
+        }
       },
       "targets": [
         {
@@ -336,16 +356,16 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 8,
-        "x": 8,
-        "y": 4
+        "x": 6,
+        "y": 3,
+        "w": 6,
+        "h": 3
       },
       "id": 6,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "justifyMode": "auto",
+        "justifyMode": "center",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
@@ -354,7 +374,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "text": {
+          "titleSize": 12,
+          "valueSize": 24
+        }
       },
       "targets": [
         {
@@ -391,16 +415,16 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 8,
-        "x": 16,
-        "y": 4
+        "x": 12,
+        "y": 3,
+        "w": 6,
+        "h": 3
       },
       "id": 7,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "justifyMode": "auto",
+        "justifyMode": "center",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
@@ -409,7 +433,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "text": {
+          "titleSize": 12,
+          "valueSize": 24
+        }
       },
       "targets": [
         {
@@ -450,16 +478,16 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 12,
         "x": 0,
-        "y": 8
+        "y": 6,
+        "w": 12,
+        "h": 3
       },
       "id": 8,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "justifyMode": "auto",
+        "justifyMode": "center",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
@@ -468,7 +496,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "text": {
+          "titleSize": 12,
+          "valueSize": 24
+        }
       },
       "targets": [
         {
@@ -509,16 +541,16 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 12,
         "x": 12,
-        "y": 8
+        "y": 6,
+        "w": 12,
+        "h": 3
       },
       "id": 9,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "justifyMode": "auto",
+        "justifyMode": "center",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
@@ -527,7 +559,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "text": {
+          "titleSize": 12,
+          "valueSize": 24
+        }
       },
       "targets": [
         {
@@ -567,10 +603,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
-        "w": 24,
         "x": 0,
-        "y": 24
+        "y": 19,
+        "w": 24,
+        "h": 5
       },
       "id": 10,
       "options": {
@@ -585,12 +621,17 @@
           "fields": "",
           "values": false
         },
-        "textMode": "value_and_name"
+        "textMode": "value_and_name",
+        "text": {
+          "titleSize": 10,
+          "valueSize": 18
+        }
       },
       "targets": [
         {
           "expr": "sum by (reason) (increase(gateway_rejections_total{provider=~\"$provider\"}[$__range]))",
-          "refId": "A"
+          "refId": "A",
+          "legendFormat": "{{reason}}"
         }
       ],
       "title": "Rejections by reason",
@@ -608,10 +649,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
-        "w": 12,
         "x": 0,
-        "y": 12
+        "y": 9,
+        "w": 12,
+        "h": 5
       },
       "id": 11,
       "options": {
@@ -642,10 +683,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
-        "w": 12,
         "x": 12,
-        "y": 12
+        "y": 9,
+        "w": 12,
+        "h": 5
       },
       "id": 12,
       "options": {
@@ -676,10 +717,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
-        "w": 12,
         "x": 0,
-        "y": 18
+        "y": 14,
+        "w": 12,
+        "h": 5
       },
       "id": 13,
       "options": {
@@ -710,10 +751,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
-        "w": 12,
         "x": 12,
-        "y": 18
+        "y": 14,
+        "w": 12,
+        "h": 5
       },
       "id": 14,
       "options": {
@@ -754,10 +795,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
-        "w": 12,
         "x": 0,
-        "y": 30
+        "y": 24,
+        "w": 12,
+        "h": 5
       },
       "id": 15,
       "options": {
@@ -793,10 +834,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
-        "w": 12,
         "x": 12,
-        "y": 30
+        "y": 24,
+        "w": 12,
+        "h": 5
       },
       "id": 16,
       "options": {
@@ -821,7 +862,7 @@
       "type": "timeseries"
     }
   ],
-  "refresh": "10s",
+  "refresh": "5s",
   "schemaVersion": 38,
   "tags": [
     "gateway",

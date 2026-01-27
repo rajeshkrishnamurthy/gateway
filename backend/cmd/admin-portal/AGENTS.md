@@ -8,9 +8,10 @@
 - Use Go stdlib only; no new dependencies.
 - Keep HTML rewriting minimal and explicit.
 - Do not parse provider responses or add new metrics.
+- Do not hardcode Docker/Compose-specific routing in portal logic; keep environment wiring in config files.
 
 ## Config
-- Docker Compose uses `conf/admin_portal_docker.json`; it is the MVP path.
+- Docker Compose uses `conf/docker/admin_portal_docker.json`; it is the MVP path.
 - `conf/admin_portal.json` is retained as a future non-Docker starting point.
 - Config files allow full-line `#` comments.
 - URLs are direct base addresses; empty values hide the corresponding nav item.

@@ -15,6 +15,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -26,7 +27,7 @@ import (
 
 const maxBodyBytes = 16 << 10
 
-var configPath = flag.String("config", "config.json", "Gateway config file path")
+var configPath = flag.String("config", "conf/sms/config.json", "Gateway config file path")
 var listenAddr = flag.String("addr", ":8080", "HTTP listen address")
 var showHelp = flag.Bool("help", false, "show usage")
 var showVersion = flag.Bool("version", false, "show version")
@@ -34,6 +35,7 @@ var showVersion = flag.Bool("version", false, "show version")
 const version = "0.1.0"
 
 const defaultGrafanaDashboardURL = "http://localhost:3000/d/gateway-overview-sms"
+const defaultGrafanaRefresh = "5s"
 
 const (
 	minProviderConnectTimeout = 2 * time.Second
@@ -520,10 +522,7 @@ func newUIServer(providerName string, providerTimeout time.Duration, grafanaDash
 	if err != nil {
 		return nil, err
 	}
-	metricsURL := strings.TrimSpace(grafanaDashboardURL)
-	if metricsURL == "" {
-		metricsURL = defaultGrafanaDashboardURL
-	}
+	metricsURL := normalizeGrafanaURL(grafanaDashboardURL, defaultGrafanaDashboardURL, defaultGrafanaRefresh)
 	return &uiServer{
 		templates:       templates,
 		staticDir:       filepath.Join(uiDir, "static"),
@@ -541,6 +540,30 @@ func newUIServer(providerName string, providerTimeout time.Duration, grafanaDash
 		metricsRegistry: metricsRegistry,
 		logBuffer:       logBuffer,
 	}, nil
+}
+
+func normalizeGrafanaURL(raw, fallback, refresh string) string {
+	metricsURL := strings.TrimSpace(raw)
+	if metricsURL == "" {
+		metricsURL = fallback
+	}
+	return ensureGrafanaRefresh(metricsURL, refresh)
+}
+
+func ensureGrafanaRefresh(raw, refresh string) string {
+	if strings.TrimSpace(refresh) == "" {
+		return raw
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	query := parsed.Query()
+	if query.Get("refresh") == "" {
+		query.Set("refresh", refresh)
+		parsed.RawQuery = query.Encode()
+	}
+	return parsed.String()
 }
 
 func findUIDir() (string, error) {

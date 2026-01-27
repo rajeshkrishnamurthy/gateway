@@ -47,7 +47,7 @@ The health console must live outside the gateways/providers and must not alter t
 
 ## Plan of Work
 
-Create a new command under `cmd/services-health/` that serves an HTML/HTMX UI at `/ui`. The command reads a lightweight JSON config (`conf/services_health.json`) with `#` comment support, listing services and their instances, including gateways and supporting tools (Grafana, Prometheus, HAProxy). Each instance includes an address and optional UI URL. The server checks each address by attempting a short TCP connection and renders an up/down status. Start/stop commands are defined in config and executed on demand via POST actions, with placeholder replacement and input fields for required options. UI templates live under `../ui/` and mirror existing styling; no JavaScript beyond HTMX.
+Create a new command under `cmd/services-health/` that serves an HTML/HTMX UI at `/ui`. The command reads a lightweight JSON config (`conf/docker/services_health.json`) with `#` comment support, listing services and their instances, including gateways and supporting tools (Grafana, Prometheus, HAProxy). Each instance includes an address and optional UI URL. The server checks each address by attempting a short HTTP GET to `healthUrl` and renders an up/down status. Start/stop commands are defined in config and executed on demand via POST actions, with placeholder replacement and input fields for required options. UI templates live under `../ui/` and mirror existing styling; no JavaScript beyond HTMX.
 
 ## Concrete Steps
 
@@ -61,7 +61,7 @@ Create a new command under `cmd/services-health/` that serves an HTML/HTMX UI at
    - `../ui/health_overview.tmpl` for the page shell.
    - `../ui/health_services.tmpl` for the HTMX-updated service list and forms.
 
-3) Add `conf/services_health.json` with services:
+3) Add `conf/docker/services_health.json` with services:
    - sms-gateway, push-gateway, prometheus, grafana, haproxy.
 
 4) Add tests under `cmd/services-health/main_test.go`:
@@ -74,7 +74,7 @@ Create a new command under `cmd/services-health/` that serves an HTML/HTMX UI at
 
 From repo root:
 
-  go run ./cmd/services-health -config conf/services_health.json -addr :8070
+  go run ./cmd/services-health -config conf/docker/services_health.json -addr :8070
 
 Open `http://localhost:8070/ui` and verify:
 - Services show up/down status with ports and UI links (when configured).

@@ -7,15 +7,19 @@ import (
 	"errors"
 	"gateway"
 	"gateway/pii"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"time"
 )
 
 const PushFCMProviderName = "pushfcm-provider"
+const fcmDebugEnv = "PUSH_FCM_DEBUG"
+const fcmDebugMaxBytes = 2048
 
 type fcmRequestBody struct {
 	Message fcmMessage `json:"message"`
@@ -30,6 +34,18 @@ type fcmMessage struct {
 type fcmNotification struct {
 	Title string `json:"title,omitempty"`
 	Body  string `json:"body,omitempty"`
+}
+
+type fcmErrorResponse struct {
+	Error fcmError `json:"error"`
+}
+
+type fcmError struct {
+	Details []fcmErrorDetail `json:"details"`
+}
+
+type fcmErrorDetail struct {
+	ErrorCode string `json:"errorCode"`
 }
 
 // PushFCMProviderCall builds the ProviderCall for the FCM push provider.
@@ -119,9 +135,58 @@ func PushFCMProviderCallWithTokenSource(providerURL string, tokenSource func(con
 			log.Printf("push provider decision referenceId=%q provider=%q mapped=accepted", req.ReferenceID, PushFCMProviderName)
 			return gateway.ProviderResult{Status: "accepted"}, nil
 		}
+		errorBody := readLimitedBody(resp, fcmDebugMaxBytes)
+		if errorBody != "" && req.Token != "" {
+			errorBody = strings.ReplaceAll(errorBody, req.Token, tokenMasked)
+		}
+		// FCM signals stale/invalid device tokens as UNREGISTERED; surface a stable rejection reason so clients can drop the token.
+		if isFCMUnregistered(errorBody) {
+			if errorBody != "" && isFCMDebugEnabled() {
+				log.Printf("push provider error body referenceId=%q provider=%q status=%d body=%q", req.ReferenceID, PushFCMProviderName, resp.StatusCode, errorBody)
+			}
+			log.Printf("push provider decision referenceId=%q provider=%q status=%d mapped=unregistered_token", req.ReferenceID, PushFCMProviderName, resp.StatusCode)
+			return gateway.ProviderResult{Status: "rejected", Reason: "unregistered_token"}, nil
+		}
+		if isFCMDebugEnabled() {
+			if errorBody != "" {
+				log.Printf("push provider error body referenceId=%q provider=%q status=%d body=%q", req.ReferenceID, PushFCMProviderName, resp.StatusCode, errorBody)
+			}
+		}
 		log.Printf("push provider decision referenceId=%q provider=%q status=%d mapped=provider_failure", req.ReferenceID, PushFCMProviderName, resp.StatusCode)
 		return gateway.ProviderResult{}, errors.New("provider non-2xx response")
 	}
+}
+
+func isFCMUnregistered(body string) bool {
+	if strings.TrimSpace(body) == "" {
+		return false
+	}
+	var parsed fcmErrorResponse
+	if err := json.Unmarshal([]byte(body), &parsed); err != nil {
+		return false
+	}
+	for _, detail := range parsed.Error.Details {
+		if detail.ErrorCode == "UNREGISTERED" {
+			return true
+		}
+	}
+	return false
+}
+
+func isFCMDebugEnabled() bool {
+	value := strings.TrimSpace(os.Getenv(fcmDebugEnv))
+	return value == "1" || strings.EqualFold(value, "true") || strings.EqualFold(value, "yes")
+}
+
+func readLimitedBody(resp *http.Response, limit int64) string {
+	if resp == nil || resp.Body == nil || limit <= 0 {
+		return ""
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 func pushPayloadSummary(req gateway.PushRequest) string {

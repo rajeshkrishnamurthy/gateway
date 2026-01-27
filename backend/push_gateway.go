@@ -168,6 +168,15 @@ func (g *PushGateway) SendPush(ctx context.Context, req PushRequest) (PushRespon
 				Reason:      reason,
 			}, nil
 		}
+		if providerResult.Reason == "unregistered_token" {
+			status := "rejected"
+			reason := "unregistered_token"
+			return PushResponse{
+				ReferenceID: req.ReferenceID,
+				Status:      status,
+				Reason:      reason,
+			}, nil
+		}
 		status := "rejected"
 		reason := "invalid_request"
 		return PushResponse{

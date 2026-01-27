@@ -228,6 +228,33 @@ func TestSendPushProviderFailureResult(t *testing.T) {
 	}
 }
 
+func TestSendPushProviderUnregisteredToken(t *testing.T) {
+	gw, err := NewPushGateway(PushConfig{
+		ProviderCall: func(ctx context.Context, req PushRequest) (ProviderResult, error) {
+			return ProviderResult{Status: "rejected", Reason: "unregistered_token"}, nil
+		},
+		ProviderTimeout: defaultPushProviderTimeout,
+	})
+	if err != nil {
+		t.Fatalf("new gateway: %v", err)
+	}
+
+	resp, err := gw.SendPush(context.Background(), PushRequest{
+		ReferenceID: "ref-unreg",
+		Token:       "token-unreg",
+		Body:        "hello",
+	})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if resp.Status != "rejected" {
+		t.Fatalf("expected rejected status, got %q", resp.Status)
+	}
+	if resp.Reason != "unregistered_token" {
+		t.Fatalf("expected unregistered_token, got %q", resp.Reason)
+	}
+}
+
 func TestSendPushProviderPanic(t *testing.T) {
 	gw, err := NewPushGateway(PushConfig{
 		ProviderCall: func(ctx context.Context, req PushRequest) (ProviderResult, error) {

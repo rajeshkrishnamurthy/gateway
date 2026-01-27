@@ -12,6 +12,7 @@ When writing complex features or significant refactors, use an ExecPlan (as desc
 - Fewer abstractions > extensibility.
 - Deletion is success.
 - If unsure, choose the simplest working code.
+- Keep application code runtime-agnostic; Docker/Compose specifics belong in ops configs, not in Go packages.
 
 ## Control Flow
 - Prefer early returns and guard clauses.
