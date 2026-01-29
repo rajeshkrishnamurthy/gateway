@@ -13,9 +13,11 @@ import (
 	"time"
 )
 
+// Sms24X7ProviderName is the identifier for the sms24x7 SMS provider adapter.
 const Sms24X7ProviderName = "sms24x7-provider"
 
 // Sms24X7ProviderCall builds the ProviderCall for the 24X7 SMS provider.
+// Sms24X7ProviderCall builds a ProviderCall for the sms24x7 SMS provider.
 func Sms24X7ProviderCall(providerURL, apiKey, serviceName, senderID string, connectTimeout time.Duration) gateway.ProviderCall {
 	if providerURL == "" {
 		return nil
@@ -38,7 +40,7 @@ func Sms24X7ProviderCall(providerURL, apiKey, serviceName, senderID string, conn
 		encodedRecipient := url.QueryEscape(req.To)
 		encodedMessage := url.QueryEscape(req.Message)
 
-		// url syntax requires ?. This has to be managed with providerUrl already containing ? etc. 
+		// url syntax requires ?. This has to be managed with providerUrl already containing ? etc.
 		separator := "?"
 		if strings.Contains(providerURL, "?") {
 			if strings.HasSuffix(providerURL, "?") || strings.HasSuffix(providerURL, "&") {
@@ -79,7 +81,7 @@ func Sms24X7ProviderCall(providerURL, apiKey, serviceName, senderID string, conn
 		log.Printf("sms provider response referenceId=%q provider=%q status=%d", req.ReferenceID, Sms24X7ProviderName, resp.StatusCode)
 
 		// We are looking for status codes in the 2xx range for success.
-		if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices { // http.StatusMultipleChoices is 300 status code. 
+		if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices { // http.StatusMultipleChoices is 300 status code.
 			log.Printf("sms provider decision referenceId=%q provider=%q mapped=accepted", req.ReferenceID, Sms24X7ProviderName)
 			return gateway.ProviderResult{Status: "accepted"}, nil
 		}

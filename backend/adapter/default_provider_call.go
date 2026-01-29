@@ -14,6 +14,7 @@ import (
 	"time"
 )
 
+// DefaultProviderName is the identifier for the default SMS provider adapter.
 const DefaultProviderName = "default-provider"
 
 type providerRequest struct {

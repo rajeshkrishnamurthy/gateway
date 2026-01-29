@@ -1,0 +1,24 @@
+# SubmissionTarget registry for Docker Compose.
+# Full-line # comments are allowed; inline comments are not.
+{
+  "targets": [
+    {
+      "submissionTarget": "sms.realtime",
+      "gatewayType": "sms",
+      "gatewayUrl": "http://localhost:8080",
+      "mode": "realtime",
+      "policy": "deadline",
+      "maxAcceptanceSeconds": 30,
+      "terminalOutcomes": ["invalid_request", "invalid_recipient", "invalid_message"]
+    },
+    {
+      "submissionTarget": "push.realtime",
+      "gatewayType": "push",
+      "gatewayUrl": "http://localhost:8081",
+      "mode": "realtime",
+      "policy": "deadline",
+      "maxAcceptanceSeconds": 30,
+      "terminalOutcomes": ["invalid_request", "unregistered_token"]
+    }
+  ]
+}

@@ -17,6 +17,7 @@ import (
 	"time"
 )
 
+// PushFCMProviderName is the identifier for the FCM push provider adapter.
 const PushFCMProviderName = "pushfcm-provider"
 const fcmDebugEnv = "PUSH_FCM_DEBUG"
 const fcmDebugMaxBytes = 2048
@@ -49,6 +50,7 @@ type fcmErrorDetail struct {
 }
 
 // PushFCMProviderCall builds the ProviderCall for the FCM push provider.
+// PushFCMProviderCall builds a PushProviderCall using a static bearer token.
 func PushFCMProviderCall(providerURL, bearerToken string, connectTimeout time.Duration) gateway.PushProviderCall {
 	if providerURL == "" {
 		return nil
@@ -59,6 +61,7 @@ func PushFCMProviderCall(providerURL, bearerToken string, connectTimeout time.Du
 }
 
 // PushFCMProviderCallWithTokenSource builds the ProviderCall for the FCM push provider.
+// PushFCMProviderCallWithTokenSource builds a PushProviderCall using a token source callback.
 func PushFCMProviderCallWithTokenSource(providerURL string, tokenSource func(context.Context) (string, error), connectTimeout time.Duration) gateway.PushProviderCall {
 	if providerURL == "" || tokenSource == nil {
 		return nil

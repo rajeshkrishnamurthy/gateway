@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// Registry tracks gateway metrics for a single provider.
 type Registry struct {
 	providerName string
 
@@ -41,6 +42,7 @@ type histogram struct {
 	sum     float64
 }
 
+// New constructs a Registry for a provider and histogram bucket set.
 func New(providerName string, buckets []time.Duration) *Registry {
 	bucketSeconds := make([]float64, len(buckets))
 	for i, b := range buckets {
@@ -53,11 +55,13 @@ func New(providerName string, buckets []time.Duration) *Registry {
 	}
 }
 
+// ObserveRequest records a gateway request outcome and its duration.
 func (r *Registry) ObserveRequest(outcome, reason string, duration time.Duration) {
 	if r == nil {
 		return
 	}
 
+	// Snapshot under lock so we do not hold the mutex while writing to the output writer.
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -87,6 +91,7 @@ func (r *Registry) ObserveRequest(outcome, reason string, duration time.Duration
 	}
 }
 
+// ObserveProviderCall records provider call duration and error classification.
 func (r *Registry) ObserveProviderCall(duration time.Duration, err error, panicRecovered bool) {
 	if r == nil {
 		return
@@ -104,6 +109,7 @@ func (r *Registry) ObserveProviderCall(duration time.Duration, err error, panicR
 	}
 }
 
+// WritePrometheus writes current metrics in Prometheus exposition format.
 func (r *Registry) WritePrometheus(w io.Writer) {
 	if r == nil {
 		return

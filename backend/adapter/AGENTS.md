@@ -43,6 +43,7 @@ Must not log:
 - Builder functions should be named `XProviderCall`.
 - Provider name constants must be stable and used in logs.
 - Use only standard library and `gateway` types.
+- Do not name ProviderCall variables as `provider`; use `providerCall`.
 
 ## Tests
 - Adapter-specific tests live alongside adapters in this folder.

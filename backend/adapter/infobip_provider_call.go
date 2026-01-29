@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+// SmsInfoBipProviderName is the identifier for the smsinfobip SMS provider adapter.
 const SmsInfoBipProviderName = "smsinfobip-provider"
 
 type infoBipRequestBody struct {
@@ -30,6 +31,7 @@ type infoBipDestination struct {
 }
 
 // SmsInfoBipProviderCall builds the ProviderCall for the InfoBip SMS provider.
+// SmsInfoBipProviderCall builds a ProviderCall for the smsinfobip SMS provider.
 func SmsInfoBipProviderCall(providerURL, apiKey, senderID string, connectTimeout time.Duration) gateway.ProviderCall {
 	if providerURL == "" {
 		return nil

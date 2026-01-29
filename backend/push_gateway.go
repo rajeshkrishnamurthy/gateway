@@ -93,6 +93,7 @@ func (g *PushGateway) SendPush(ctx context.Context, req PushRequest) (PushRespon
 		}, ErrInvalidRequest
 	}
 
+	// Guard inflight to enforce in-flight idempotency; release before provider call to avoid serializing requests.
 	g.mu.Lock()
 	if _, ok := g.inflight[req.ReferenceID]; ok {
 		g.mu.Unlock()

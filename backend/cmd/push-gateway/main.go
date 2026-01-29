@@ -1045,6 +1045,7 @@ func newLogBuffer(capacity int) *logBuffer {
 }
 
 func (b *logBuffer) Write(p []byte) (int, error) {
+	// Hold the lock while assembling partial lines to keep the buffer consistent across concurrent writes.
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -1081,6 +1082,7 @@ func (b *logBuffer) entriesForReferenceID(referenceID string, limit int) []logEn
 	if b == nil || referenceID == "" || limit <= 0 {
 		return nil
 	}
+	// Lock during scan to avoid races with concurrent log writes.
 	b.mu.Lock()
 	defer b.mu.Unlock()
 

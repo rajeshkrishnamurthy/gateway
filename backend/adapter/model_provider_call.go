@@ -15,6 +15,7 @@ import (
 	"time"
 )
 
+// ModelProviderName is the identifier for the model SMS provider adapter.
 const ModelProviderName = "model-provider"
 
 type modelProviderRequestBody struct {
@@ -32,6 +33,7 @@ type modelProviderErrorBody struct {
 }
 
 // ModelProviderCall builds the ProviderCall for the canonical model provider.
+// ModelProviderCall builds a ProviderCall for the model SMS provider.
 func ModelProviderCall(providerURL string, connectTimeout time.Duration) gateway.ProviderCall {
 	if providerURL == "" {
 		return nil

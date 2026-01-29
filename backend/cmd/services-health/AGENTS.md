@@ -6,7 +6,7 @@
 ## Boundaries
 - Do not depend on gateway code or providers.
 - Use Go stdlib only; no new dependencies.
-- Health checks are TCP reachability to configured addresses.
+- Health checks are HTTP GET to each instance `healthUrl` (2xx = up).
 
 ## Config
 - Config file is `conf/docker/services_health.json` and allows full-line `#` comments.

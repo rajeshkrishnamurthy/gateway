@@ -1,12 +1,39 @@
 ## Codex maintenance notes
 
 This repo is maintained by Codex across sessions. Before changing behavior, read the closest `AGENTS.md` and follow `PLANS.md` for non-trivial work.
+ExecPlans live under `plans/`.
 
 Start with these operational docs:
 - `backend/cmd/services-health/README.md` for the Command Center.
 - `backend/cmd/admin-portal/README.md` for the Admin Portal.
 
 Prefer explicit, minimal changes that preserve the current submission-only contracts.
+
+## SubmissionManager (Phase 1)
+
+Phase 1 defines the SubmissionTarget registry and contract validation only (no execution engine yet).
+
+- `backend/spec/submission-manager.md` defines SubmissionIntent, gatewayType, submissionTarget, and contract semantics.
+- `backend/conf/submission/submission_targets.json` is the sample registry for SubmissionManager.
+- `backend/submission/README.md` describes the registry loader behavior.
+
+## SubmissionManager (Phase 2)
+
+Phase 2 adds the in-memory SubmissionManager execution engine (no HTTP surface, no persistence).
+
+- `backend/submissionmanager/README.md` describes the execution engine and its boundaries.
+
+## SQL Server (local dev, Phase 3 groundwork)
+
+For macOS development, SQL Server runs in Docker via `docker-compose.yml` as the `mssql` service.
+Credentials are stored in `backend/.env` (git-ignored).
+
+Connection details:
+
+- Host: `localhost`
+- Port: `1433`
+- User: `sa`
+- Password: from `backend/.env` (`MSSQL_SA_PASSWORD`)
 
 ## MVP posture (Docker-only)
 

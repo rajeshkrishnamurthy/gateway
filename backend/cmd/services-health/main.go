@@ -395,6 +395,7 @@ func (u *uiServer) runAction(serviceID, instanceName, configInput, addrInput str
 			return actionResult{notice: formatStartError(err, output.String()), serviceID: serviceID, instanceName: instanceName}
 		}
 		exitCh := make(chan error, 1)
+		// Wait in a goroutine so we can poll health while still observing early process exits.
 		go func() {
 			exitCh <- cmd.Wait()
 		}()

@@ -13,9 +13,11 @@ import (
 	"time"
 )
 
+// SmsKarixProviderName is the identifier for the smskarix SMS provider adapter.
 const SmsKarixProviderName = "smskarix-provider"
 
 // SmsKarixProviderCall builds the ProviderCall for the Karix SMS provider.
+// SmsKarixProviderCall builds a ProviderCall for the smskarix SMS provider.
 func SmsKarixProviderCall(providerURL, apiKey, version, senderID string, connectTimeout time.Duration) gateway.ProviderCall {
 	if providerURL == "" {
 		return nil

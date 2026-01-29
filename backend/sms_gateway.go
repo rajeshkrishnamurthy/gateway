@@ -11,6 +11,7 @@ import (
 	"time"
 )
 
+// ErrInvalidRequest reports a rejected request that failed gateway validation.
 var ErrInvalidRequest = errors.New("invalid request")
 var errMissingProviderCall = errors.New("provider call is required")
 var errInvalidProviderTimeout = errors.New("provider timeout must be between 15s and 60s")
@@ -54,7 +55,7 @@ type ProviderResult struct {
 
 // SMSGateway is the core SMS gateway service.
 type SMSGateway struct {
-	mu              sync.Mutex
+	mu sync.Mutex
 	// Gateway is submission-only with no durable state, so idempotency is limited to in-flight requests.
 	inflight        map[string]struct{}
 	providerCall    ProviderCall
@@ -108,6 +109,7 @@ func (g *SMSGateway) SendSMS(ctx context.Context, req SMSRequest) (SMSResponse, 
 		}, ErrInvalidRequest
 	}
 
+	// Guard inflight to enforce in-flight idempotency; release before provider call to avoid serializing requests.
 	g.mu.Lock()
 	if _, ok := g.inflight[req.ReferenceID]; ok {
 		g.mu.Unlock()

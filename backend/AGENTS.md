@@ -1,10 +1,10 @@
-# AGENTS.md — Go Code Generation (Codex)
+# AGENTS.md - Go Code Generation (Codex)
 
 ## Role
 Generate Go code for a long-lived backend. Optimize for predictability, convergence, low review cost, and boring, obvious, idiomatic Go. Do not optimize for elegance, abstraction, or future flexibility.
 
 # ExecPlans
-When writing complex features or significant refactors, use an ExecPlan (as described in .agent/PLANS.md) from design to implementation.
+When writing complex features or significant refactors, use an ExecPlan (as described in `backend/PLANS.md`) from design to implementation.
 
 ## Global Defaults
 - Prefer simple, flat, explicit code.
@@ -57,50 +57,25 @@ When writing complex features or significant refactors, use an ExecPlan (as desc
 - Use standard `testing` package only.
 - Stable diffs > refactors.
 
+## Specs and README
+- Treat `backend/spec/` as canonical for system semantics.
+- When behavior or semantics change, update the relevant spec/README in the same change.
+
 ## Comments (Strict)
+- Package-level doc comments (for godoc) are allowed.
+- Exported API comments (capitalized identifiers) are allowed.
+- Inline comments are allowed only for these topics:
+  - Concurrency/locking intent: why a lock is held or released at a specific point.
+  - Queue semantics: ordering rules, fairness, and why seq is used for FIFO.
+  - Policy vs outcome: why a decision is made (for example, deadline check only for accepted).
+  - Idempotency invariants: what constitutes conflict and why it is strict.
+  - Non-obvious constraints: invariants like “contract snapshot must not change after submit.”
 - Do not comment obvious control flow or arithmetic.
 - Prefer clearer naming or structure over comments.
 - Comments explain why a constraint exists, not what the code does.
-- Comments only for non-obvious invariants or limits.
 - If a comment can be removed without loss of understanding, it should not exist.
-- Comments may protect non-obvious business rules, product constraints, or external limits.
-- Exported APIs must have intent-level comments.
-- In Go, comments justify decisions; they do not narrate execution.
 - Do not comment error variables, constants, or fields if names are self-explanatory.
-- Do not add doc-comments by default; comments must earn their existence.
-- When in doubt, remove the comment.
-
-## SMS Provider Integration — Ubiquitous Language (Strict)
-- provider: external SMS system (outside our control).
-- ProviderCall: runtime callable capability.
-  Type: `func(context.Context, SMSRequest) (ProviderResult, error)`.
-  Invoked as: `providerCall(ctx, req)`.
-- modelProviderCall: concrete builder that returns a ProviderCall.
-- adapter: conceptual role only; adapter logic lives inside the ProviderCall implementation.
-  Do not introduce adapter structs or interfaces unless duplication exists.
-- gateway: domain service; owns validation and idempotency; never talks to providers directly, only invokes a ProviderCall.
-
-Rules:
-- Do not name ProviderCall variables as `provider`; use `providerCall`.
-- Treat ProviderCall as executable authority, not an object.
-
-## HTML UI Handlers (Strict)
-- HTML UI handlers are pure adapters.
-- Must call existing core logic and must not reimplement behavior.
-- Must only perform input parsing, core invocation, and template selection.
-- Any data shaping beyond trivial field assignment belongs in the core.
-- Must render existing HTML templates using `html/template`.
-- Templates are located under `../ui/` and must not be duplicated or moved.
-- Templates must receive explicit view structs; no implicit or global data.
-- Handlers must not embed business rules or decision logic.
-- Templates must be treated as fragments, not documents.
-- JSON APIs and HTML UI handlers must share the same core logic, never duplicate it.
-- Internal errors must be mapped to user-facing messages before rendering.
-
-## HTTP Handler Placement (Strict)
-- All HTTP route registration and handlers must live in `main.go` under a suitable sub-directory in `cmd/`.
-- Core packages must not depend on `net/http`.
-- UI handlers must be registered alongside other HTTP routes, not in core packages.
+- Do not add doc-comments by default; comments must earn their existence within the allowed topics.
 
 ## Tests
 - Tests should be boring and obvious.
