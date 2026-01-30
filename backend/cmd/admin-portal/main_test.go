@@ -30,6 +30,25 @@ func TestRewriteUIPathsNoPrefix(t *testing.T) {
 	}
 }
 
+func TestRewriteSubmissionCopy(t *testing.T) {
+	input := "Manual submission to the gateway. This mirrors POST /sms/send and returns the raw response.\n" +
+		"No retry, no send again, no history. Use referenceId values you can trace in logs.\n" +
+		"<label for=\"referenceId\">referenceId</label>\n" +
+		"<h2>Gateway response</h2>\n" +
+		"Submit a request to see status, reason, and gatewayMessageId.\n" +
+		"Accepted means submitted, not delivered. This console does not infer delivery or retries."
+	output := string(rewriteSubmissionCopy([]byte(input), "/sms/send"))
+	if !strings.Contains(output, "SubmissionManager owns retries and history.") {
+		t.Fatalf("expected submission manager copy, got %q", output)
+	}
+	if !strings.Contains(output, "intentId") {
+		t.Fatalf("expected intentId label, got %q", output)
+	}
+	if strings.Contains(output, "Gateway response") {
+		t.Fatalf("expected gateway response label removed, got %q", output)
+	}
+}
+
 func TestParseHAProxyCSV(t *testing.T) {
 	csvData := "# pxname,svname,scur,status,lastchg\n" +
 		"sms_gateway,FRONTEND,2,OPEN,30\n" +
@@ -420,6 +439,40 @@ func TestHandleSMSAPISubmissionManager(t *testing.T) {
 	}
 }
 
+func TestHandleSMSSubmissionInvalidJSON(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		SubmissionManagerURL: "http://sm",
+		SMSSubmissionTarget:  "sms.realtime",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader(`{"bad":`))
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleSMSAPI(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "invalid request body") {
+		t.Fatalf("expected error message, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleSMSSubmissionMissingFields(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		SubmissionManagerURL: "http://sm",
+		SMSSubmissionTarget:  "sms.realtime",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader(`{"referenceId":"intent-1","to":"+1"}`))
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleSMSAPI(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "referenceId, to, and message are required") {
+		t.Fatalf("expected missing fields error, got %q", rr.Body.String())
+	}
+}
+
 func TestHandlePushAPISubmissionManager(t *testing.T) {
 	var got submissionIntentRequest
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -467,6 +520,40 @@ func TestHandlePushAPISubmissionManager(t *testing.T) {
 	}
 	if payload["referenceId"] != "intent-1" || payload["token"] != "abc" || payload["title"] != "hi" || payload["body"] != "there" || payload["tenantId"] != "tenant-a" {
 		t.Fatalf("unexpected payload: %+v", payload)
+	}
+}
+
+func TestHandlePushSubmissionInvalidJSON(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		SubmissionManagerURL: "http://sm",
+		PushSubmissionTarget: "push.realtime",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/push/send", strings.NewReader(`{"bad":`))
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handlePushAPI(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "invalid request body") {
+		t.Fatalf("expected error message, got %q", rr.Body.String())
+	}
+}
+
+func TestHandlePushSubmissionMissingFields(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		SubmissionManagerURL: "http://sm",
+		PushSubmissionTarget: "push.realtime",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/push/send", strings.NewReader(`{"referenceId":"intent-1"}`))
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handlePushAPI(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "referenceId and token are required") {
+		t.Fatalf("expected missing fields error, got %q", rr.Body.String())
 	}
 }
 
@@ -529,6 +616,33 @@ func TestHandleSMSStatusSubmissionManager(t *testing.T) {
 	}
 }
 
+func TestHandleSMSStatusMissingIntent(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		SubmissionManagerURL: "http://sm",
+		SMSSubmissionTarget:  "sms.realtime",
+	})
+	req := httptest.NewRequest(http.MethodGet, "/sms/status", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleSMSStatus(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "intentId is required") {
+		t.Fatalf("expected missing intentId error, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleSMSStatusNotConfigured(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{})
+	req := httptest.NewRequest(http.MethodGet, "/sms/status?intentId=intent-1", nil)
+	rr := httptest.NewRecorder()
+	server.handleSMSStatus(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+}
+
 func TestHandlePushStatusSubmissionManager(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/intents/intent-1" {
@@ -553,6 +667,33 @@ func TestHandlePushStatusSubmissionManager(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "accepted") {
 		t.Fatalf("expected accepted status, got %q", rr.Body.String())
+	}
+}
+
+func TestHandlePushStatusMissingIntent(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		SubmissionManagerURL: "http://sm",
+		PushSubmissionTarget: "push.realtime",
+	})
+	req := httptest.NewRequest(http.MethodGet, "/push/status", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handlePushStatus(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "intentId is required") {
+		t.Fatalf("expected missing intentId error, got %q", rr.Body.String())
+	}
+}
+
+func TestHandlePushStatusNotConfigured(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{})
+	req := httptest.NewRequest(http.MethodGet, "/push/status?intentId=intent-1", nil)
+	rr := httptest.NewRecorder()
+	server.handlePushStatus(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
 	}
 }
 

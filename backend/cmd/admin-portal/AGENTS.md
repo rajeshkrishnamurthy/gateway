@@ -9,6 +9,7 @@
 - Keep HTML rewriting minimal and explicit.
 - Do not parse provider responses or add new metrics.
 - Do not hardcode Docker/Compose-specific routing in portal logic; keep environment wiring in config files.
+- Error handling: UI endpoints must render via `renderError`/fragments. API passthrough endpoints may use `http.Error` only for local proxy failures (bad URL/build/transport); otherwise preserve upstream status/body. Hybrid endpoints should render fragments for HTMX requests and return raw JSON for non-HTMX callers.
 
 ## Config
 - Docker Compose uses `conf/docker/admin_portal_docker.json`; it is the MVP path.
