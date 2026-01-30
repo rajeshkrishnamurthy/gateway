@@ -17,6 +17,7 @@ Rules for HTTP entrypoints under `cmd/`.
 - Internal errors must be mapped to user-facing messages before rendering.
 
 ## HTTP Handler Placement (Strict)
-- All HTTP route registration and handlers must live in `main.go` under a suitable sub-directory in `cmd/`.
+- HTTP route registration and handlers must live in the `cmd/<service>` package and may be split across files (for example `handlers.go`, `routes.go`).
+- `main.go` must be limited to wiring dependencies and starting the server.
 - Core packages must not depend on `net/http`.
 - UI handlers must be registered alongside other HTTP routes, not in core packages.

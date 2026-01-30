@@ -69,8 +69,9 @@ Any provider error or panic is normalized to `rejected` with reason `provider_fa
 
 ### HTTP status codes
 
-- `400` for invalid requests and duplicate in-flight references.
-- `200` for accepted responses and provider failures.
+- Gateways must never return 2xx unless they can produce a complete, valid normalized outcome.
+- `200` for any normalized outcome (accepted or rejected).
+- non‑2xx only when a normalized outcome cannot be produced.
 
 ## Push gateway contract
 
@@ -119,8 +120,9 @@ Any provider error or panic is normalized to `rejected` with reason `provider_fa
 
 ### HTTP status codes
 
-- `400` for invalid requests and duplicate in-flight references.
-- `200` for accepted responses and provider failures.
+- Gateways must never return 2xx unless they can produce a complete, valid normalized outcome.
+- `200` for any normalized outcome (accepted or rejected).
+- non‑2xx only when a normalized outcome cannot be produced.
 
 ## Gateway message IDs
 

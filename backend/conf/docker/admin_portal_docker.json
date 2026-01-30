@@ -3,6 +3,9 @@
   "title": "Setu Admin Portal",
   "smsGatewayUrl": "http://haproxy:8080",
   "pushGatewayUrl": "http://haproxy:8081",
+  "submissionManagerUrl": "http://submission-manager:8082",
+  "smsSubmissionTarget": "sms.realtime",
+  "pushSubmissionTarget": "push.realtime",
   "commandCenterUrl": "http://host.docker.internal:8070",
   "haproxyStatsUrl": "http://haproxy:8404/stats;csv"
 }

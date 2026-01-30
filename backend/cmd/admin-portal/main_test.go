@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"html/template"
 	"io"
 	"net/http"
@@ -284,13 +285,15 @@ func newTestPortalServer(t *testing.T, cfg fileConfig) *portalServer {
 	overview := template.Must(template.New("portal_overview.tmpl").Parse(`{{define "portal_overview.tmpl"}}overview {{.Title}}{{end}}`))
 	haproxy := template.Must(template.New("portal_haproxy.tmpl").Parse(`{{define "portal_haproxy.tmpl"}}haproxy {{len .Frontends}} {{len .Backends}} {{.Error}}{{end}}`))
 	errView := template.Must(template.New("portal_error.tmpl").Parse(`{{define "portal_error.tmpl"}}error {{.Title}} {{.Message}}{{end}}`))
+	submissionResult := template.Must(template.New("submission_result.tmpl").Parse(`{{define "submission_result.tmpl"}}submission {{.IntentID}} {{.StatusEndpoint}} {{.Status}} {{.RejectedReason}} {{.ExhaustedReason}} {{.CompletedAt}} {{.Error}}{{end}}`))
 	return &portalServer{
 		config: normalizeConfig(cfg),
 		templates: portalTemplates{
-			topbar:   topbar,
-			overview: overview,
-			haproxy:  haproxy,
-			errView:  errView,
+			topbar:           topbar,
+			overview:         overview,
+			haproxy:          haproxy,
+			errView:          errView,
+			submissionResult: submissionResult,
 		},
 		client: &http.Client{},
 	}
@@ -367,6 +370,106 @@ func TestProxyUIBadMethod(t *testing.T) {
 	}
 }
 
+func TestHandleSMSAPISubmissionManager(t *testing.T) {
+	var got submissionIntentRequest
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/intents" {
+			t.Fatalf("expected path /v1/intents, got %q", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %q", r.Method)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode intent: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"intentId":"intent-1","submissionTarget":"sms.realtime","createdAt":"2026-01-30T00:00:00Z","status":"pending"}`)
+	}))
+	defer upstream.Close()
+
+	server := newTestPortalServer(t, fileConfig{
+		SMSGatewayURL:        "http://sms",
+		SubmissionManagerURL: upstream.URL,
+		SMSSubmissionTarget:  "sms.realtime",
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader(`{"referenceId":"intent-1","to":"+1","message":"hello","tenantId":"tenant-a"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleSMSAPI(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "pending") {
+		t.Fatalf("expected pending status, got %q", rr.Body.String())
+	}
+
+	if got.IntentID != "intent-1" {
+		t.Fatalf("expected intentId intent-1, got %q", got.IntentID)
+	}
+	if got.SubmissionTarget != "sms.realtime" {
+		t.Fatalf("expected submissionTarget sms.realtime, got %q", got.SubmissionTarget)
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(got.Payload, &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if payload["referenceId"] != "intent-1" || payload["to"] != "+1" || payload["message"] != "hello" || payload["tenantId"] != "tenant-a" {
+		t.Fatalf("unexpected payload: %+v", payload)
+	}
+}
+
+func TestHandlePushAPISubmissionManager(t *testing.T) {
+	var got submissionIntentRequest
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/intents" {
+			t.Fatalf("expected path /v1/intents, got %q", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %q", r.Method)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode intent: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"intentId":"intent-1","submissionTarget":"push.realtime","createdAt":"2026-01-30T00:00:00Z","status":"pending"}`)
+	}))
+	defer upstream.Close()
+
+	server := newTestPortalServer(t, fileConfig{
+		PushGatewayURL:       "http://push",
+		SubmissionManagerURL: upstream.URL,
+		PushSubmissionTarget: "push.realtime",
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/push/send", strings.NewReader(`{"referenceId":"intent-1","token":"abc","title":"hi","body":"there","tenantId":"tenant-a"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handlePushAPI(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "pending") {
+		t.Fatalf("expected pending status, got %q", rr.Body.String())
+	}
+
+	if got.IntentID != "intent-1" {
+		t.Fatalf("expected intentId intent-1, got %q", got.IntentID)
+	}
+	if got.SubmissionTarget != "push.realtime" {
+		t.Fatalf("expected submissionTarget push.realtime, got %q", got.SubmissionTarget)
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(got.Payload, &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if payload["referenceId"] != "intent-1" || payload["token"] != "abc" || payload["title"] != "hi" || payload["body"] != "there" || payload["tenantId"] != "tenant-a" {
+		t.Fatalf("unexpected payload: %+v", payload)
+	}
+}
+
 func TestHandleSMSAPIProxy(t *testing.T) {
 	var gotPath, gotMethod, gotContentType string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -396,6 +499,60 @@ func TestHandleSMSAPIProxy(t *testing.T) {
 	}
 	if gotContentType != "application/json" {
 		t.Fatalf("expected content type forwarded, got %q", gotContentType)
+	}
+}
+
+func TestHandleSMSStatusSubmissionManager(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/intents/intent-1" {
+			t.Fatalf("expected path /v1/intents/intent-1, got %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"intentId":"intent-1","submissionTarget":"sms.realtime","createdAt":"2026-01-30T00:00:00Z","status":"accepted","completedAt":"2026-01-30T00:00:01Z"}`)
+	}))
+	defer upstream.Close()
+
+	server := newTestPortalServer(t, fileConfig{
+		SubmissionManagerURL: upstream.URL,
+		SMSSubmissionTarget:  "sms.realtime",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/sms/status?intentId=intent-1", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleSMSStatus(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "accepted") {
+		t.Fatalf("expected accepted status, got %q", rr.Body.String())
+	}
+}
+
+func TestHandlePushStatusSubmissionManager(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/intents/intent-1" {
+			t.Fatalf("expected path /v1/intents/intent-1, got %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"intentId":"intent-1","submissionTarget":"push.realtime","createdAt":"2026-01-30T00:00:00Z","status":"accepted","completedAt":"2026-01-30T00:00:01Z"}`)
+	}))
+	defer upstream.Close()
+
+	server := newTestPortalServer(t, fileConfig{
+		SubmissionManagerURL: upstream.URL,
+		PushSubmissionTarget: "push.realtime",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/push/status?intentId=intent-1", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handlePushStatus(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "accepted") {
+		t.Fatalf("expected accepted status, got %q", rr.Body.String())
 	}
 }
 
@@ -498,12 +655,13 @@ func TestLoadPortalTemplates(t *testing.T) {
 	write("portal_overview.tmpl", `{{define "portal_overview.tmpl"}}overview{{end}}`)
 	write("portal_haproxy.tmpl", `{{define "portal_haproxy.tmpl"}}haproxy{{end}}`)
 	write("portal_error.tmpl", `{{define "portal_error.tmpl"}}error{{end}}`)
+	write("submission_result.tmpl", `{{define "submission_result.tmpl"}}submission{{end}}`)
 
 	templates, err := loadPortalTemplates(dir)
 	if err != nil {
 		t.Fatalf("loadPortalTemplates: %v", err)
 	}
-	if templates.topbar == nil || templates.overview == nil || templates.haproxy == nil || templates.errView == nil {
+	if templates.topbar == nil || templates.overview == nil || templates.haproxy == nil || templates.errView == nil || templates.submissionResult == nil {
 		t.Fatal("expected templates to be loaded")
 	}
 }

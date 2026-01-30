@@ -5,7 +5,7 @@
     {
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
-      "gatewayUrl": "http://localhost:8080",
+      "gatewayUrl": "http://haproxy:8080",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
       "terminalOutcomes": ["invalid_request", "invalid_recipient", "invalid_message"]
@@ -13,7 +13,7 @@
     {
       "submissionTarget": "push.realtime",
       "gatewayType": "push",
-      "gatewayUrl": "http://localhost:8081",
+      "gatewayUrl": "http://haproxy:8081",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
       "terminalOutcomes": ["invalid_request", "unregistered_token"]

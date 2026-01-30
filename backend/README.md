@@ -17,13 +17,73 @@ Phase 1 defines the SubmissionTarget registry and contract validation only (no e
 - `backend/conf/submission/submission_targets.json` is the sample registry for SubmissionManager.
 - `backend/submission/README.md` describes the registry loader behavior.
 
-## SubmissionManager (Phase 2)
+## SubmissionManager (Phase 2/3a)
 
-Phase 2 adds the in-memory SubmissionManager execution engine (no HTTP surface, no persistence).
+Phase 2 introduced the SubmissionManager execution engine. Phase 3a adds SQL Server durability for intents, attempts, and scheduling metadata.
 
 - `backend/submissionmanager/README.md` describes the execution engine and its boundaries.
+- `backend/conf/sql/submissionmanager/001_create_schema.sql` defines the persistence schema.
 
-## SQL Server (local dev, Phase 3 groundwork)
+## SubmissionManager HTTP (Phase 3b)
+
+Phase 3b exposes SubmissionManager over HTTP as a thin adapter.
+
+Run from `backend/`:
+
+```sh
+go run ./cmd/submission-manager \\
+  -addr :8082 \\
+  -registry conf/submission/submission_targets.json \\
+  -sql-host localhost \\
+  -sql-port 1433 \\
+  -sql-user sa \\
+  -sql-password \"$MSSQL_SA_PASSWORD\" \\
+  -sql-db setu \\
+  -sql-encrypt disable
+```
+
+Endpoints:
+
+- POST `http://localhost:8082/v1/intents`
+- GET `http://localhost:8082/v1/intents/{intentId}`
+
+Response JSON:
+
+- intentId
+- submissionTarget
+- status (pending, accepted, rejected, exhausted)
+- createdAt (RFC3339)
+- completedAt (present when terminal)
+- rejectedReason (present when status is rejected)
+- exhaustedReason (present when status is exhausted)
+
+Docker Compose (dev/testing):
+
+```sh
+docker compose up -d
+```
+
+The compose service uses `conf/submission/submission_targets_docker.json` so the manager reaches HAProxy by service name.
+
+Smoke test (HTTP):
+
+```sh
+curl -sS -X POST http://localhost:8082/v1/intents \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "intentId": "intent-1",
+    "submissionTarget": "sms.realtime",
+    "payload": {
+      "referenceId": "intent-1",
+      "to": "+15551234567",
+      "message": "hello"
+    }
+  }'
+
+curl -sS http://localhost:8082/v1/intents/intent-1
+```
+
+## SQL Server (local dev, Phase 3a)
 
 For macOS development, SQL Server runs in Docker via `docker-compose.yml` as the `mssql` service.
 Credentials are stored in `backend/.env` (git-ignored).
@@ -34,6 +94,10 @@ Connection details:
 - Port: `1433`
 - User: `sa`
 - Password: from `backend/.env` (`MSSQL_SA_PASSWORD`)
+
+Schema updates:
+
+- If your database predates the removal of `submission_intents.mode`, re-run `backend/conf/sql/submissionmanager/001_create_schema.sql` to drop the column.
 
 ## MVP posture (Docker-only)
 
@@ -96,9 +160,7 @@ Gateway response (JSON):
 
 ## HTTP status semantics
 
-400
-The request is invalid or a duplicate.
-The client must change the request before retrying.
+Gateways must never return 2xx unless they can produce a complete, valid normalized outcome.
 
 200 + status=rejected
 Submission was attempted but not confirmed.
@@ -106,6 +168,9 @@ The client may retry later with the same or a new referenceId, based on its own 
 
 200 + status=accepted
 The request was successfully submitted to the provider.
+
+non-2xx
+Returned only when the gateway cannot produce a complete, valid normalized outcome.
 
 ## Submission vs delivery
 

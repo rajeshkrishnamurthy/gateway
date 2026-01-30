@@ -135,6 +135,23 @@ services:
       retries: 5
       start_period: 5s
 
+  submission-manager:
+    <<: *go-service
+    command: ["go", "run", "./cmd/submission-manager", "-addr", ":8082", "-registry", "conf/submission/submission_targets_docker.json"]
+    ports:
+      - "8082:8082"
+    env_file:
+      - ./backend/.env
+    environment:
+      MSSQL_HOST: "mssql"
+      MSSQL_PORT: "1433"
+      MSSQL_USER: "sa"
+      MSSQL_DATABASE: "setu"
+      MSSQL_ENCRYPT: "disable"
+    depends_on:
+      - mssql
+      - haproxy
+
   admin-portal:
     <<: *go-service
     command: ["go", "run", "./cmd/admin-portal", "-config", "conf/docker/admin_portal_docker.json", "-addr", ":8090"]

@@ -589,7 +589,7 @@ func handlePushSend(gw *gateway.PushGateway, metricsRegistry *metrics.Registry, 
 		var req gateway.PushRequest
 		if err := dec.Decode(&req); err != nil {
 			log.Printf("push decision referenceId=%q status=rejected reason=invalid_request source=validation detail=decode_error err=%v", "", err)
-			writePushSendResponse(w, r, http.StatusBadRequest, gateway.PushResponse{
+			writePushSendResponse(w, r, http.StatusOK, gateway.PushResponse{
 				Status: "rejected",
 				Reason: "invalid_request",
 			}, sendResult)
@@ -600,7 +600,7 @@ func handlePushSend(gw *gateway.PushGateway, metricsRegistry *metrics.Registry, 
 		}
 		if err := dec.Decode(&struct{}{}); err != io.EOF {
 			log.Printf("push decision referenceId=%q status=rejected reason=invalid_request source=validation detail=trailing_json", req.ReferenceID)
-			writePushSendResponse(w, r, http.StatusBadRequest, gateway.PushResponse{
+			writePushSendResponse(w, r, http.StatusOK, gateway.PushResponse{
 				Status: "rejected",
 				Reason: "invalid_request",
 			}, sendResult)
@@ -611,10 +611,6 @@ func handlePushSend(gw *gateway.PushGateway, metricsRegistry *metrics.Registry, 
 		}
 
 		resp, err := gw.SendPush(r.Context(), req)
-		status := http.StatusOK
-		if err != nil && errors.Is(err, gateway.ErrInvalidRequest) {
-			status = http.StatusBadRequest
-		}
 		source := "provider_result"
 		if err != nil && errors.Is(err, gateway.ErrInvalidRequest) {
 			source = "validation"
@@ -629,7 +625,7 @@ func handlePushSend(gw *gateway.PushGateway, metricsRegistry *metrics.Registry, 
 			source,
 			resp.GatewayMessageID,
 		)
-		writePushSendResponse(w, r, status, resp, sendResult)
+		writePushSendResponse(w, r, http.StatusOK, resp, sendResult)
 		if metricsRegistry != nil {
 			metricsRegistry.ObserveRequest(resp.Status, resp.Reason, time.Since(start))
 		}

@@ -15,7 +15,6 @@ func TestLoadRegistryValidConfig(t *testing.T) {
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
       "terminalOutcomes": ["invalid_request", "invalid_message"]
@@ -24,7 +23,6 @@ func TestLoadRegistryValidConfig(t *testing.T) {
       "submissionTarget": "push.realtime",
       "gatewayType": "push",
       "gatewayUrl": "http://localhost:8081",
-      "mode": "realtime",
       "policy": "max_attempts",
       "maxAttempts": 3,
       "terminalOutcomes": ["invalid_request", "unregistered_token"]
@@ -51,9 +49,6 @@ func TestLoadRegistryValidConfig(t *testing.T) {
 	}
 	if contract.GatewayURL != "http://localhost:8080" {
 		t.Fatalf("expected gatewayUrl http://localhost:8080, got %q", contract.GatewayURL)
-	}
-	if contract.Mode != ModeRealtime {
-		t.Fatalf("expected mode realtime, got %q", contract.Mode)
 	}
 	if contract.Policy != PolicyDeadline {
 		t.Fatalf("expected policy deadline, got %q", contract.Policy)
@@ -91,7 +86,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
       "submissionTarget": "sms.realtime",
       "gatewayType": "email",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
       "terminalOutcomes": ["invalid_request"]
@@ -109,7 +103,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
       "terminalOutcomes": ["unregistered_token"]
@@ -127,7 +120,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
       "gatewayUrl": "localhost:8080",
-      "mode": "realtime",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
       "terminalOutcomes": ["invalid_request"]
@@ -145,7 +137,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
       "submissionTarget": " ",
       "gatewayType": "sms",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
       "terminalOutcomes": ["invalid_request"]
@@ -163,7 +154,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
       "terminalOutcomes": ["invalid_request"]
@@ -172,7 +162,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
       "terminalOutcomes": ["invalid_request"]
@@ -183,24 +172,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
 			wantContain: "duplicated",
 		},
 		{
-			name: "invalid mode",
-			config: `{
-  "targets": [
-    {
-      "submissionTarget": "sms.realtime",
-      "gatewayType": "sms",
-      "gatewayUrl": "http://localhost:8080",
-      "mode": "fast",
-      "policy": "deadline",
-      "maxAcceptanceSeconds": 30,
-      "terminalOutcomes": ["invalid_request"]
-    }
-  ]
-}
-`,
-			wantContain: "mode",
-		},
-		{
 			name: "non-positive maxAcceptanceSeconds",
 			config: `{
   "targets": [
@@ -208,7 +179,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "policy": "deadline",
       "maxAcceptanceSeconds": 0,
       "terminalOutcomes": ["invalid_request"]
@@ -226,7 +196,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "policy": "deadline",
       "maxAcceptanceSeconds": -1,
       "terminalOutcomes": ["invalid_request"]
@@ -244,7 +213,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "policy": "max_attempts",
       "maxAttempts": -2,
       "terminalOutcomes": ["invalid_request"]
@@ -262,7 +230,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "maxAcceptanceSeconds": 30,
       "terminalOutcomes": ["invalid_request"]
     }
@@ -279,7 +246,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "policy": "deadline_plus",
       "maxAcceptanceSeconds": 30,
       "terminalOutcomes": ["invalid_request"]
@@ -297,7 +263,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
       "maxAttempts": 2,
@@ -316,7 +281,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "policy": "max_attempts",
       "maxAcceptanceSeconds": 30,
       "maxAttempts": 2,
@@ -335,7 +299,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "policy": "one_shot",
       "maxAttempts": 2,
       "terminalOutcomes": ["invalid_request"]
@@ -353,7 +316,6 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
       "terminalOutcomes": []

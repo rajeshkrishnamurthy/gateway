@@ -28,9 +28,9 @@ submissionTarget is data-driven and selects a contract. It is the contract ident
 
 SubmissionManager owns time and attempts. It executes the first attempt immediately, schedules retries only if the contract allows, and completes intents as ACCEPTED, REJECTED, or EXHAUSTED. It does not reinterpret gateway semantics and does not reason about delivery after acceptance.
 
-#### Execution engine (Phase 2)
+#### Execution engine
 
-Phase 2 adds an in-memory SubmissionManager execution engine (no HTTP surface, no persistence). It resolves submissionTarget into a contract snapshot at submission time and stores that snapshot on the intent. Routing is explicit: the resolved gatewayType and gatewayUrl are passed into the executor, and execution does not re-resolve them.
+SubmissionManager executes intents and persists state in SQL Server for intents, attempts, and scheduling metadata. It resolves submissionTarget into a contract snapshot at submission time and stores that snapshot on the intent. Routing is explicit: the resolved gatewayType and gatewayUrl are passed into the executor, and execution does not re-resolve them.
 
 Intent status is an orchestration outcome derived from gateway outcomes plus contract policy:
 
@@ -40,19 +40,53 @@ Intent status is an orchestration outcome derived from gateway outcomes plus con
 
 Additional semantics:
 
-- FinalOutcome is meaningful only for ACCEPTED and REJECTED intents.
+- RejectedReason is meaningful only for REJECTED intents.
 - ExhaustedReason explains policy exhaustion, not gateway failure.
+- CompletedAt records when an intent reached a terminal state (accepted, rejected, exhausted).
 - Only rejection reasons explicitly listed in terminalOutcomes are terminal. All other rejection reasons are treated as non-terminal and retryable under policy, while still being recorded on attempts.
 - Terminal intents are append-only: once ACCEPTED, REJECTED, or EXHAUSTED, no further attempts run and the outcome does not change.
 - A repeated intentId with the same submissionTarget and payload is idempotent and returns the existing intent.
 - A repeated intentId with a different submissionTarget or payload is an idempotency conflict.
+- Payload is persisted as raw bytes along with a hash to enforce idempotency across restarts.
 - Invalid gateway outcomes (missing status, missing rejection reason, or unknown status) are recorded as attempt errors and treated as non-terminal under policy.
-- Phase 2 idempotency and intent state are in-memory only; process restarts clear intent history.
+- Intent state, attempts, and nextAttemptAt are persisted in SQL Server; restarts rebuild the in-memory queue from persisted schedule data.
+- The resolved contract snapshot (submissionTarget, gatewayType, gatewayUrl, policy, terminalOutcomes) is persisted per intent; contract masters remain file-based.
+- A single SubmissionManager process is assumed; no worker claiming, leasing, or multi-instance coordination is introduced.
+- attempt_count on the intent row is the authoritative attempt number source; the attempts table is an audit log and must not be used to derive attempt sequencing.
 
 Retry timing:
 
-- Phase 2 uses a fixed 5 second retry delay as an internal execution policy.
+- A fixed 5 second retry delay is used as an internal execution policy.
 - Retry timing is not a contract term and must not be surfaced as part of submissionTarget semantics.
+
+#### Persistence
+
+Intent state, attempts, and scheduling metadata are stored in SQL Server. The schema lives in `backend/conf/sql/submissionmanager/001_create_schema.sql` and includes:
+
+- `submission_intents` with the contract snapshot, payload, payload_hash, status, attempt_count, and next_attempt_at.
+- `submission_attempts` as an append-only audit log for each attempt.
+
+SubmissionManager rebuilds its in-memory schedule on startup from `next_attempt_at`, and idempotency checks are enforced against persisted payloads.
+
+#### HTTP API
+
+SubmissionManager is exposed over HTTP as a thin adapter with no semantic changes. The HTTP layer must not expose the contract snapshot and must delegate directly to the existing manager methods.
+
+Endpoints:
+
+- POST `/v1/intents` creates or queries an intent (idempotent). Request JSON:
+  - intentId (string, required)
+  - submissionTarget (string, required)
+  - payload (opaque JSON, optional)
+  Response JSON includes intentId, submissionTarget, createdAt, status, completedAt (when terminal), rejectedReason (when rejected), and exhaustedReason (when exhausted).
+- GET `/v1/intents/{intentId}` returns the current intent state or 404 if unknown.
+
+Error mapping:
+
+- 400 invalid_request for malformed JSON, missing intentId/submissionTarget, or unknown submissionTarget.
+- 404 not_found when an intentId does not exist.
+- 409 idempotency_conflict when the same intentId is reused with a different payload or submissionTarget.
+- 500 internal_error for unexpected failures.
 
 ## SubmissionTarget Registry
 
@@ -67,7 +101,6 @@ Each registry entry defines:
 - submissionTarget: stable, unique target identifier
 - gatewayType: sms or push (code-known)
 - gatewayUrl: base URL for the HAProxy frontend for this gateway type
-- mode: realtime or batch
 - policy: one of `deadline`, `max_attempts`, or `one_shot`
 - maxAcceptanceSeconds: required when policy is `deadline`
 - maxAttempts: required when policy is `max_attempts`
@@ -115,7 +148,6 @@ Gateway response status is accepted or rejected. Rejection reasons include:
       "submissionTarget": "sms.realtime",
       "gatewayType": "sms",
       "gatewayUrl": "http://localhost:8080",
-      "mode": "realtime",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
       "terminalOutcomes": ["invalid_request", "invalid_recipient", "invalid_message"]
@@ -124,7 +156,6 @@ Gateway response status is accepted or rejected. Rejection reasons include:
       "submissionTarget": "push.realtime",
       "gatewayType": "push",
       "gatewayUrl": "http://localhost:8081",
-      "mode": "realtime",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
       "terminalOutcomes": ["invalid_request", "unregistered_token"]

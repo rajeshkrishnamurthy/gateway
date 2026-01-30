@@ -34,19 +34,11 @@ const (
 	PolicyOneShot ContractPolicy = "one_shot"
 )
 
-const (
-	// ModeRealtime denotes a real-time submission contract.
-	ModeRealtime = "realtime"
-	// ModeBatch denotes a batch submission contract.
-	ModeBatch = "batch"
-)
-
 // TargetContract is the resolved contract snapshot for a submissionTarget.
 type TargetContract struct {
 	SubmissionTarget string
 	GatewayType      GatewayType
 	GatewayURL       string
-	Mode             string
 	Policy           ContractPolicy
 	// MaxAcceptanceSeconds is the cumulative wall-clock deadline from intent
 	// creation within which the submission must be accepted. It is not a
@@ -73,7 +65,6 @@ type targetConfig struct {
 	SubmissionTarget     string   `json:"submissionTarget"`
 	GatewayType          string   `json:"gatewayType"`
 	GatewayURL           string   `json:"gatewayUrl"`
-	Mode                 string   `json:"mode"`
 	Policy               string   `json:"policy"`
 	MaxAcceptanceSeconds int      `json:"maxAcceptanceSeconds"`
 	MaxAttempts          int      `json:"maxAttempts"`
@@ -199,16 +190,6 @@ func buildRegistry(cfg fileConfig) (Registry, error) {
 			return Registry{}, fmt.Errorf("targets[%d].gatewayUrl %v", i, err)
 		}
 
-		mode := strings.TrimSpace(target.Mode)
-		if mode == "" {
-			return Registry{}, fmt.Errorf("targets[%d].mode is required", i)
-		}
-		switch mode {
-		case ModeRealtime, ModeBatch:
-		default:
-			return Registry{}, fmt.Errorf("targets[%d].mode must be one of: realtime, batch", i)
-		}
-
 		if target.MaxAcceptanceSeconds < 0 {
 			return Registry{}, fmt.Errorf("targets[%d].maxAcceptanceSeconds must be zero or greater", i)
 		}
@@ -276,7 +257,6 @@ func buildRegistry(cfg fileConfig) (Registry, error) {
 			SubmissionTarget:     submissionTarget,
 			GatewayType:          gatewayType,
 			GatewayURL:           gatewayURL,
-			Mode:                 mode,
 			Policy:               policy,
 			MaxAcceptanceSeconds: target.MaxAcceptanceSeconds,
 			MaxAttempts:          target.MaxAttempts,

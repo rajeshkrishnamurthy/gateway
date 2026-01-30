@@ -1,11 +1,18 @@
 package main
 
 import (
-	"gateway/adapter"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"gateway"
+	"gateway/adapter"
 )
 
 func TestLoadConfigAllowsHashComments(t *testing.T) {
@@ -197,5 +204,34 @@ func TestProviderFromConfigSmsInfoBipWithEnv(t *testing.T) {
 	}
 	if providerName != adapter.SmsInfoBipProviderName {
 		t.Fatalf("expected provider name %q, got %q", adapter.SmsInfoBipProviderName, providerName)
+	}
+}
+
+func TestHandleSMSSendInvalidJSONReturns200(t *testing.T) {
+	gw, err := gateway.New(gateway.Config{
+		ProviderCall: func(ctx context.Context, req gateway.SMSRequest) (gateway.ProviderResult, error) {
+			return gateway.ProviderResult{Status: "accepted"}, nil
+		},
+		ProviderTimeout: 15 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new gateway: %v", err)
+	}
+
+	handler := handleSMSSend(gw, nil, nil)
+	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader("{"))
+	rr := httptest.NewRecorder()
+	handler(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var resp gateway.SMSResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Status != "rejected" || resp.Reason != "invalid_request" {
+		t.Fatalf("unexpected response: %+v", resp)
 	}
 }

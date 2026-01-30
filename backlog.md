@@ -4,10 +4,12 @@ This list captures follow-up ideas and open questions to consider in later phase
 
 - Persistence and recovery: Decide if intents must survive restarts, how to recover in-flight attempts, and what retention/cleanup policy looks like. Code to examine: `backend/submissionmanager/manager.go`, `backend/submissionmanager/manager_test.go`.
 - Idempotency scope and retention: Choose whether idempotency spans all historical intents or only active ones, and whether a separate idempotency ledger/TTL is needed. Code to examine: `backend/submissionmanager/manager.go`, `backend/submissionmanager/manager_test.go`.
-- HTTP APIs: Define submit/get intent endpoints, error surfaces, and versioning so clients can rely on stable semantics. Code to examine: `backend/cmd/sms-gateway/main.go`, `backend/cmd/push-gateway/main.go`, and `backend/cmd/admin-portal/main.go` for handler patterns.
+- Payload security: Decide when to add at-rest encryption for stored payloads or move payload storage to a separate secure store. Code to examine: `backend/submissionmanager/manager.go`.
+- Rate limiting: Define per-client or per-target limits to protect SubmissionManager and gateways from overload. Code to examine: `backend/cmd/submission-manager/handlers.go`, `backend/submissionmanager/manager.go`.
 - Retry policies: Move from a fixed delay to configurable strategies (fixed, exponential, jitter) without exposing timing as a contract term. Code to examine: `backend/submissionmanager/manager.go`.
 - Attempt timeouts: Decide how long the manager waits for a gateway response and how late responses are handled; align with gateway server timeouts. Code to examine: `backend/submissionmanager/manager.go`, `backend/cmd/sms-gateway/main.go`, `backend/cmd/push-gateway/main.go`.
 - Concurrency model: Consider worker scaling, queue fairness, and deterministic scheduling under load. Code to examine: `backend/submissionmanager/manager.go`.
+- Distributed work claiming: Ensure only one executor claims an intent attempt when multiple instances run (leases/locks, HTTP-only nodes, leader election). Code to examine: `backend/submissionmanager/manager.go`, `backend/submissionmanager/store.go`.
 - Cancellation: Define how cancellation affects in-flight attempts and which final status a client sees. Code to examine: `backend/submissionmanager/manager.go`.
 - Metrics/observability: Add per-intent lifecycle metrics, retry counts, and exhaustion reasons for operators. Code to examine: `backend/metrics/metrics.go`, `backend/submissionmanager/manager.go`.
 - Failure taxonomy: Make executor errors distinct from gateway outcomes and record how they affect policy decisions. Code to examine: `backend/submissionmanager/manager.go`, `backend/submission/registry.go`.

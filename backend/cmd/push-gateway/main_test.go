@@ -3,14 +3,17 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"gateway/adapter"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"gateway"
+	"gateway/adapter"
 )
 
 const testServiceAccountKey = `-----BEGIN RSA PRIVATE KEY-----
@@ -223,5 +226,34 @@ func TestFCMTokenSourceToken(t *testing.T) {
 	}
 	if hitCount != 1 {
 		t.Fatalf("expected 1 token request, got %d", hitCount)
+	}
+}
+
+func TestHandlePushSendInvalidJSONReturns200(t *testing.T) {
+	gw, err := gateway.NewPushGateway(gateway.PushConfig{
+		ProviderCall: func(ctx context.Context, req gateway.PushRequest) (gateway.ProviderResult, error) {
+			return gateway.ProviderResult{Status: "accepted"}, nil
+		},
+		ProviderTimeout: 15 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new gateway: %v", err)
+	}
+
+	handler := handlePushSend(gw, nil, nil)
+	req := httptest.NewRequest(http.MethodPost, "/push/send", strings.NewReader("{"))
+	rr := httptest.NewRecorder()
+	handler(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var resp gateway.PushResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Status != "rejected" || resp.Reason != "invalid_request" {
+		t.Fatalf("unexpected response: %+v", resp)
 	}
 }

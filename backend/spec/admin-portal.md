@@ -13,6 +13,9 @@ Fields:
 - `title` (optional) - page title used in the shell
 - `smsGatewayUrl` (optional) - base URL for SMS gateway UI and API
 - `pushGatewayUrl` (optional) - base URL for push gateway UI and API
+- `submissionManagerUrl` (optional) - base URL for SubmissionManager
+- `smsSubmissionTarget` (optional) - submissionTarget used for test SMS when routing through SubmissionManager
+- `pushSubmissionTarget` (optional) - submissionTarget used for test push when routing through SubmissionManager
 - `commandCenterUrl` (optional) - base URL for the services health console
 - `haproxyStatsUrl` (optional) - HAProxy CSV stats endpoint (`/stats;csv`)
 
@@ -25,8 +28,10 @@ Empty URLs hide the corresponding navigation entry.
 - `GET /sms/ui/*` - proxied SMS gateway UI
 - `GET /push/ui/*` - proxied push gateway UI
 - `GET /command-center/ui/*` - proxied services health UI
-- `POST /sms/send` - proxied SMS send API
-- `POST /push/send` - proxied push send API
+- `POST /sms/send` - submits to SubmissionManager when configured; otherwise proxied SMS send API
+- `GET /sms/status?intentId=...` - queries SubmissionManager for current intent status when configured
+- `POST /push/send` - submits to SubmissionManager when configured; otherwise proxied push send API
+- `GET /push/status?intentId=...` - queries SubmissionManager for current intent status when configured
 - `GET /healthz`, `GET /readyz`
 
 ## Proxy behavior
@@ -35,7 +40,8 @@ Empty URLs hide the corresponding navigation entry.
 - UI responses with `Content-Type: text/html` are rewritten to prefix `/ui` links with the portal path (for example, `/sms/ui`).
 - When proxying the Command Center UI, `embed=1` is added to the upstream query string and the theme toggle is stripped from the HTML.
 - The portal rewrites the SMS console label "Troubleshoot by ReferenceId" to "Troubleshoot" in proxied HTML.
-- API requests (`/sms/send`, `/push/send`) are proxied directly to the configured upstream URL.
+- `/sms/send` is routed to SubmissionManager when `submissionManagerUrl` and `smsSubmissionTarget` are set; otherwise it proxies to the SMS gateway.
+- `/push/send` is routed to SubmissionManager when `submissionManagerUrl` and `pushSubmissionTarget` are set; otherwise it proxies to the push gateway.
 
 ## HAProxy view
 

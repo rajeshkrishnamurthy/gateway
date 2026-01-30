@@ -1,0 +1,32 @@
+<h2>Submission response</h2>
+{{if .Error}}
+<p class="muted">{{.Error}}</p>
+{{else}}
+<dl class="kv">
+  <div>
+    <dt>Intent ID</dt>
+    <dd>{{if .IntentID}}{{.IntentID}}{{else}}-{{end}}</dd>
+  </div>
+  <div>
+    <dt>Status</dt>
+    <dd class="status status-{{.Status}}">{{.Status}}</dd>
+  </div>
+  <div>
+    <dt>Rejected reason</dt>
+    <dd>{{if .RejectedReason}}{{.RejectedReason}}{{else}}-{{end}}</dd>
+  </div>
+  <div>
+    <dt>Exhausted reason</dt>
+    <dd>{{if .ExhaustedReason}}{{.ExhaustedReason}}{{else}}-{{end}}</dd>
+  </div>
+  <div>
+    <dt>Completed at</dt>
+    <dd>{{if .CompletedAt}}{{.CompletedAt}}{{else}}-{{end}}</dd>
+  </div>
+</dl>
+{{if .StatusEndpoint}}
+<div class="actions">
+  <button class="button" type="button" hx-get="{{.StatusEndpoint}}" hx-target="#send-result" hx-swap="innerHTML">Check status</button>
+</div>
+{{end}}
+{{end}}

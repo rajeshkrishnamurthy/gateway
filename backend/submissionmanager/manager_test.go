@@ -2,6 +2,7 @@ package submissionmanager
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"runtime"
 	"strings"
@@ -107,33 +108,28 @@ func (s *stubExecutor) Exec(ctx context.Context, input AttemptInput) (GatewayOut
 
 func waitForCall(t *testing.T, calls <-chan AttemptInput) AttemptInput {
 	t.Helper()
-	for i := 0; i < 1000; i++ {
-		select {
-		case input := <-calls:
-			return input
-		default:
-			runtime.Gosched()
-		}
+	select {
+	case input := <-calls:
+		return input
+	case <-time.After(2 * time.Second):
+		t.Fatalf("executor was not called")
 	}
-	t.Fatalf("executor was not called")
 	return AttemptInput{}
 }
 
 func assertNoCall(t *testing.T, calls <-chan AttemptInput) {
 	t.Helper()
-	for i := 0; i < 1000; i++ {
-		select {
-		case <-calls:
-			t.Fatalf("unexpected executor call")
-		default:
-			runtime.Gosched()
-		}
+	select {
+	case <-calls:
+		t.Fatalf("unexpected executor call")
+	case <-time.After(100 * time.Millisecond):
 	}
 }
 
 func waitForStatus(t *testing.T, manager *Manager, intentID string, status IntentStatus) Intent {
 	t.Helper()
-	for i := 0; i < 1000; i++ {
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
 		intent, ok := manager.GetIntent(intentID)
 		if ok && intent.Status == status {
 			return intent
@@ -146,7 +142,8 @@ func waitForStatus(t *testing.T, manager *Manager, intentID string, status Inten
 
 func waitForAttempts(t *testing.T, manager *Manager, intentID string, count int) Intent {
 	t.Helper()
-	for i := 0; i < 1000; i++ {
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
 		intent, ok := manager.GetIntent(intentID)
 		if ok && len(intent.Attempts) == count {
 			return intent
@@ -162,7 +159,6 @@ func baseContract(policy submission.ContractPolicy) submission.TargetContract {
 		SubmissionTarget: "sms.realtime",
 		GatewayType:      submission.GatewaySMS,
 		GatewayURL:       "http://sms",
-		Mode:             submission.ModeRealtime,
 		Policy:           policy,
 		TerminalOutcomes: []string{"invalid_request"},
 	}
@@ -175,9 +171,9 @@ func baseContract(policy submission.ContractPolicy) submission.TargetContract {
 	return contract
 }
 
-func newManager(t *testing.T, reg submission.Registry, exec AttemptExecutor, clock *fakeClock) *Manager {
+func newManager(t *testing.T, reg submission.Registry, exec AttemptExecutor, clock *fakeClock, db *sql.DB) *Manager {
 	t.Helper()
-	manager, err := NewManager(reg, exec, Clock{Now: clock.Now, After: clock.After})
+	manager, err := NewManager(reg, exec, Clock{Now: clock.Now, After: clock.After}, db)
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
@@ -197,10 +193,11 @@ func startManager(t *testing.T, manager *Manager) (context.Context, context.Canc
 
 func TestSubmitIntentIdempotency(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
 	contract := baseContract(submission.PolicyOneShot)
 	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
 	stub := newStubExecutor(clock, nil)
-	manager := newManager(t, reg, stub.Exec, clock)
+	manager := newManager(t, reg, stub.Exec, clock, db)
 
 	intent := Intent{
 		IntentID:         "intent-1",
@@ -237,14 +234,44 @@ func TestSubmitIntentIdempotency(t *testing.T) {
 	}
 }
 
+func TestIdempotencyAcrossRestart(t *testing.T) {
+	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
+	contract := baseContract(submission.PolicyOneShot)
+	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
+	stub := newStubExecutor(clock, nil)
+	manager := newManager(t, reg, stub.Exec, clock, db)
+
+	intent := Intent{
+		IntentID:         "intent-1",
+		SubmissionTarget: contract.SubmissionTarget,
+		Payload:          []byte(`{"a":1}`),
+	}
+
+	first, err := manager.SubmitIntent(context.Background(), intent)
+	if err != nil {
+		t.Fatalf("submit intent: %v", err)
+	}
+
+	manager = newManager(t, reg, stub.Exec, clock, db)
+	second, err := manager.SubmitIntent(context.Background(), intent)
+	if err != nil {
+		t.Fatalf("submit intent again: %v", err)
+	}
+	if first.IntentID != second.IntentID || first.SubmissionTarget != second.SubmissionTarget {
+		t.Fatalf("expected idempotent submit after restart, got %+v and %+v", first, second)
+	}
+}
+
 func TestTerminalOutcomeRejects(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
 	contract := baseContract(submission.PolicyMaxAttempts)
 	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
 	stub := newStubExecutor(clock, []execResult{{
 		outcome: GatewayOutcome{Status: "rejected", Reason: "invalid_request"},
 	}})
-	manager := newManager(t, reg, stub.Exec, clock)
+	manager := newManager(t, reg, stub.Exec, clock, db)
 	_, cancel, done := startManager(t, manager)
 	defer func() {
 		cancel()
@@ -272,13 +299,14 @@ func TestTerminalOutcomeRejects(t *testing.T) {
 
 func TestRetryDelaySchedulingAndAcceptance(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
 	contract := baseContract(submission.PolicyMaxAttempts)
 	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
 	stub := newStubExecutor(clock, []execResult{
 		{outcome: GatewayOutcome{Status: "rejected", Reason: "provider_failure"}},
 		{outcome: GatewayOutcome{Status: "accepted"}},
 	})
-	manager := newManager(t, reg, stub.Exec, clock)
+	manager := newManager(t, reg, stub.Exec, clock, db)
 	_, cancel, done := startManager(t, manager)
 	defer func() {
 		cancel()
@@ -313,15 +341,54 @@ func TestRetryDelaySchedulingAndAcceptance(t *testing.T) {
 	}
 }
 
+func TestRestartRebuildsSchedule(t *testing.T) {
+	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
+	contract := baseContract(submission.PolicyMaxAttempts)
+	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
+	stub := newStubExecutor(clock, []execResult{
+		{outcome: GatewayOutcome{Status: "rejected", Reason: "provider_failure"}},
+		{outcome: GatewayOutcome{Status: "accepted"}},
+	})
+	manager := newManager(t, reg, stub.Exec, clock, db)
+	_, cancel, done := startManager(t, manager)
+
+	_, err := manager.SubmitIntent(context.Background(), Intent{IntentID: "intent-1", SubmissionTarget: contract.SubmissionTarget})
+	if err != nil {
+		cancel()
+		<-done
+		t.Fatalf("submit intent: %v", err)
+	}
+	waitForCall(t, stub.calls)
+	waitForAttempts(t, manager, "intent-1", 1)
+	cancel()
+	<-done
+
+	manager = newManager(t, reg, stub.Exec, clock, db)
+	_, cancel, done = startManager(t, manager)
+	defer func() {
+		cancel()
+		<-done
+	}()
+
+	clock.Advance(5 * time.Second)
+	waitForCall(t, stub.calls)
+	intent := waitForStatus(t, manager, "intent-1", IntentAccepted)
+	if len(intent.Attempts) != 2 {
+		t.Fatalf("expected 2 attempts, got %d", len(intent.Attempts))
+	}
+}
+
 func TestUnknownRejectionReasonIsRetryable(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
 	contract := baseContract(submission.PolicyMaxAttempts)
 	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
 	stub := newStubExecutor(clock, []execResult{
 		{outcome: GatewayOutcome{Status: "rejected", Reason: "new_reason"}},
 		{outcome: GatewayOutcome{Status: "accepted"}},
 	})
-	manager := newManager(t, reg, stub.Exec, clock)
+	manager := newManager(t, reg, stub.Exec, clock, db)
 	_, cancel, done := startManager(t, manager)
 	defer func() {
 		cancel()
@@ -348,13 +415,14 @@ func TestUnknownRejectionReasonIsRetryable(t *testing.T) {
 
 func TestDeadlineAcceptanceAfterDeadlineExhausted(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
 	contract := baseContract(submission.PolicyDeadline)
 	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
 	stub := newStubExecutor(clock, []execResult{{
 		outcome: GatewayOutcome{Status: "accepted"},
 		advance: 15 * time.Second,
 	}})
-	manager := newManager(t, reg, stub.Exec, clock)
+	manager := newManager(t, reg, stub.Exec, clock, db)
 	_, cancel, done := startManager(t, manager)
 	defer func() {
 		cancel()
@@ -377,13 +445,14 @@ func TestDeadlineAcceptanceAfterDeadlineExhausted(t *testing.T) {
 
 func TestDeadlineRetryNotScheduledAfterCutoff(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
 	contract := baseContract(submission.PolicyDeadline)
 	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
 	stub := newStubExecutor(clock, []execResult{{
 		outcome: GatewayOutcome{Status: "rejected", Reason: "provider_failure"},
 		advance: 9 * time.Second,
 	}})
-	manager := newManager(t, reg, stub.Exec, clock)
+	manager := newManager(t, reg, stub.Exec, clock, db)
 	_, cancel, done := startManager(t, manager)
 	defer func() {
 		cancel()
@@ -406,13 +475,14 @@ func TestDeadlineRetryNotScheduledAfterCutoff(t *testing.T) {
 
 func TestMaxAttemptsExhausted(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
 	contract := baseContract(submission.PolicyMaxAttempts)
 	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
 	stub := newStubExecutor(clock, []execResult{
 		{outcome: GatewayOutcome{Status: "rejected", Reason: "provider_failure"}},
 		{outcome: GatewayOutcome{Status: "rejected", Reason: "provider_failure"}},
 	})
-	manager := newManager(t, reg, stub.Exec, clock)
+	manager := newManager(t, reg, stub.Exec, clock, db)
 	_, cancel, done := startManager(t, manager)
 	defer func() {
 		cancel()
@@ -437,12 +507,13 @@ func TestMaxAttemptsExhausted(t *testing.T) {
 
 func TestOneShotExhausted(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
 	contract := baseContract(submission.PolicyOneShot)
 	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
 	stub := newStubExecutor(clock, []execResult{{
 		outcome: GatewayOutcome{Status: "rejected", Reason: "provider_failure"},
 	}})
-	manager := newManager(t, reg, stub.Exec, clock)
+	manager := newManager(t, reg, stub.Exec, clock, db)
 	_, cancel, done := startManager(t, manager)
 	defer func() {
 		cancel()
@@ -467,13 +538,14 @@ func TestOneShotExhausted(t *testing.T) {
 
 func TestDuplicateReferenceNonTerminal(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
 	contract := baseContract(submission.PolicyMaxAttempts)
 	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
 	stub := newStubExecutor(clock, []execResult{
 		{outcome: GatewayOutcome{Status: "rejected", Reason: "duplicate_reference"}},
 		{outcome: GatewayOutcome{Status: "rejected", Reason: "duplicate_reference"}},
 	})
-	manager := newManager(t, reg, stub.Exec, clock)
+	manager := newManager(t, reg, stub.Exec, clock, db)
 	_, cancel, done := startManager(t, manager)
 	defer func() {
 		cancel()
@@ -495,12 +567,13 @@ func TestDuplicateReferenceNonTerminal(t *testing.T) {
 
 func TestUnknownGatewayOutcomeStatusExhausted(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
 	contract := baseContract(submission.PolicyOneShot)
 	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
 	stub := newStubExecutor(clock, []execResult{{
 		outcome: GatewayOutcome{Status: "mystery"},
 	}})
-	manager := newManager(t, reg, stub.Exec, clock)
+	manager := newManager(t, reg, stub.Exec, clock, db)
 	_, cancel, done := startManager(t, manager)
 	defer func() {
 		cancel()
@@ -523,12 +596,13 @@ func TestUnknownGatewayOutcomeStatusExhausted(t *testing.T) {
 
 func TestContractSnapshotStableAfterRegistryChange(t *testing.T) {
 	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
 	contract := baseContract(submission.PolicyOneShot)
 	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
 	stub := newStubExecutor(clock, []execResult{{
 		outcome: GatewayOutcome{Status: "accepted"},
 	}})
-	manager := newManager(t, reg, stub.Exec, clock)
+	manager := newManager(t, reg, stub.Exec, clock, db)
 
 	_, err := manager.SubmitIntent(context.Background(), Intent{IntentID: "intent-1", SubmissionTarget: contract.SubmissionTarget})
 	if err != nil {

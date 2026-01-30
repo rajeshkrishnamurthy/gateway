@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -37,18 +38,22 @@ const (
 )
 
 type fileConfig struct {
-	Title            string `json:"title"`
-	SMSGatewayURL    string `json:"smsGatewayUrl"`
-	PushGatewayURL   string `json:"pushGatewayUrl"`
-	CommandCenterURL string `json:"commandCenterUrl"`
-	HAProxyStatsURL  string `json:"haproxyStatsUrl"`
+	Title                string `json:"title"`
+	SMSGatewayURL        string `json:"smsGatewayUrl"`
+	PushGatewayURL       string `json:"pushGatewayUrl"`
+	SubmissionManagerURL string `json:"submissionManagerUrl"`
+	SMSSubmissionTarget  string `json:"smsSubmissionTarget"`
+	PushSubmissionTarget string `json:"pushSubmissionTarget"`
+	CommandCenterURL     string `json:"commandCenterUrl"`
+	HAProxyStatsURL      string `json:"haproxyStatsUrl"`
 }
 
 type portalTemplates struct {
-	topbar   *template.Template
-	overview *template.Template
-	haproxy  *template.Template
-	errView  *template.Template
+	topbar           *template.Template
+	overview         *template.Template
+	haproxy          *template.Template
+	errView          *template.Template
+	submissionResult *template.Template
 }
 
 type portalServer struct {
@@ -56,6 +61,54 @@ type portalServer struct {
 	templates portalTemplates
 	staticDir string
 	client    *http.Client
+}
+
+type submissionResultView struct {
+	IntentID        string
+	StatusEndpoint  string
+	Status          string
+	RejectedReason  string
+	ExhaustedReason string
+	CompletedAt     string
+	Error           string
+}
+
+type submissionIntentRequest struct {
+	IntentID         string          `json:"intentId"`
+	SubmissionTarget string          `json:"submissionTarget"`
+	Payload          json.RawMessage `json:"payload"`
+}
+
+type submissionIntentResponse struct {
+	IntentID         string `json:"intentId"`
+	SubmissionTarget string `json:"submissionTarget"`
+	CreatedAt        string `json:"createdAt"`
+	Status           string `json:"status"`
+	CompletedAt      string `json:"completedAt,omitempty"`
+	RejectedReason   string `json:"rejectedReason,omitempty"`
+	ExhaustedReason  string `json:"exhaustedReason,omitempty"`
+}
+
+type submissionErrorResponse struct {
+	Error struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+type smsTestRequest struct {
+	ReferenceID string `json:"referenceId"`
+	To          string `json:"to"`
+	Message     string `json:"message"`
+	TenantID    string `json:"tenantId"`
+}
+
+type pushTestRequest struct {
+	ReferenceID string `json:"referenceId"`
+	Token       string `json:"token"`
+	Title       string `json:"title"`
+	Body        string `json:"body"`
+	TenantID    string `json:"tenantId"`
 }
 
 type topbarView struct {
@@ -148,9 +201,11 @@ func main() {
 	mux.HandleFunc("/sms/ui", server.handleSMSUI)
 	mux.HandleFunc("/sms/ui/", server.handleSMSUI)
 	mux.HandleFunc("/sms/send", server.handleSMSAPI)
+	mux.HandleFunc("/sms/status", server.handleSMSStatus)
 	mux.HandleFunc("/push/ui", server.handlePushUI)
 	mux.HandleFunc("/push/ui/", server.handlePushUI)
 	mux.HandleFunc("/push/send", server.handlePushAPI)
+	mux.HandleFunc("/push/status", server.handlePushStatus)
 	mux.HandleFunc("/command-center/ui", server.handleCommandCenterUI)
 	mux.HandleFunc("/command-center/ui/", server.handleCommandCenterUI)
 
@@ -237,11 +292,411 @@ func (s *portalServer) handleCommandCenterUI(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *portalServer) handleSMSAPI(w http.ResponseWriter, r *http.Request) {
+	if s.useSubmissionManagerSMS() {
+		s.handleSMSSubmission(w, r)
+		return
+	}
 	s.proxyAPI(w, r, s.config.SMSGatewayURL)
 }
 
 func (s *portalServer) handlePushAPI(w http.ResponseWriter, r *http.Request) {
+	if s.useSubmissionManagerPush() {
+		s.handlePushSubmission(w, r)
+		return
+	}
 	s.proxyAPI(w, r, s.config.PushGatewayURL)
+}
+
+func (s *portalServer) useSubmissionManagerSMS() bool {
+	return s.config.SubmissionManagerURL != "" && s.config.SMSSubmissionTarget != ""
+}
+
+func (s *portalServer) useSubmissionManagerPush() bool {
+	return s.config.SubmissionManagerURL != "" && s.config.PushSubmissionTarget != ""
+}
+
+func (s *portalServer) handleSMSStatus(w http.ResponseWriter, r *http.Request) {
+	if !s.useSubmissionManagerSMS() {
+		http.Error(w, "submission manager not configured", http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	intentID := strings.TrimSpace(r.URL.Query().Get("intentId"))
+	if intentID == "" {
+		s.renderSubmissionFailure(w, r, http.StatusBadRequest, "intentId is required")
+		return
+	}
+
+	status, body, contentType, err := s.fetchIntent(r.Context(), intentID)
+	if err != nil {
+		s.renderSubmissionFailure(w, r, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	if !isHTMX(r) {
+		if contentType != "" {
+			w.Header().Set("Content-Type", contentType)
+		}
+		w.WriteHeader(status)
+		if _, err := w.Write(body); err != nil {
+			log.Printf("write submission response: %v", err)
+		}
+		return
+	}
+
+	view := submissionResultView{}
+	if status >= http.StatusOK && status < http.StatusMultipleChoices {
+		var resp submissionIntentResponse
+		if err := json.Unmarshal(body, &resp); err != nil {
+			s.renderSubmissionFailure(w, r, http.StatusBadGateway, "decode response failed")
+			return
+		}
+		view.IntentID = resp.IntentID
+		view.StatusEndpoint = statusEndpoint("/sms/status", resp.IntentID)
+		view.Status = resp.Status
+		view.RejectedReason = resp.RejectedReason
+		view.ExhaustedReason = resp.ExhaustedReason
+		view.CompletedAt = resp.CompletedAt
+	} else {
+		view.Error = submissionErrorMessage(body)
+		if view.Error == "" {
+			view.Error = "submission failed"
+		}
+	}
+
+	s.renderSubmissionResult(w, status, view)
+}
+
+func (s *portalServer) handlePushStatus(w http.ResponseWriter, r *http.Request) {
+	if !s.useSubmissionManagerPush() {
+		http.Error(w, "submission manager not configured", http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	intentID := strings.TrimSpace(r.URL.Query().Get("intentId"))
+	if intentID == "" {
+		s.renderSubmissionFailure(w, r, http.StatusBadRequest, "intentId is required")
+		return
+	}
+
+	status, body, contentType, err := s.fetchIntent(r.Context(), intentID)
+	if err != nil {
+		s.renderSubmissionFailure(w, r, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	if !isHTMX(r) {
+		if contentType != "" {
+			w.Header().Set("Content-Type", contentType)
+		}
+		w.WriteHeader(status)
+		if _, err := w.Write(body); err != nil {
+			log.Printf("write submission response: %v", err)
+		}
+		return
+	}
+
+	view := submissionResultView{}
+	if status >= http.StatusOK && status < http.StatusMultipleChoices {
+		var resp submissionIntentResponse
+		if err := json.Unmarshal(body, &resp); err != nil {
+			s.renderSubmissionFailure(w, r, http.StatusBadGateway, "decode response failed")
+			return
+		}
+		view.IntentID = resp.IntentID
+		view.StatusEndpoint = statusEndpoint("/push/status", resp.IntentID)
+		view.Status = resp.Status
+		view.RejectedReason = resp.RejectedReason
+		view.ExhaustedReason = resp.ExhaustedReason
+		view.CompletedAt = resp.CompletedAt
+	} else {
+		view.Error = submissionErrorMessage(body)
+		if view.Error == "" {
+			view.Error = "submission failed"
+		}
+	}
+
+	s.renderSubmissionResult(w, status, view)
+}
+
+func (s *portalServer) handleSMSSubmission(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req smsTestRequest
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&req); err != nil {
+		s.renderSubmissionFailure(w, r, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		s.renderSubmissionFailure(w, r, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	req.ReferenceID = strings.TrimSpace(req.ReferenceID)
+	req.To = strings.TrimSpace(req.To)
+	req.Message = strings.TrimSpace(req.Message)
+	req.TenantID = strings.TrimSpace(req.TenantID)
+	if req.ReferenceID == "" || req.To == "" || req.Message == "" {
+		s.renderSubmissionFailure(w, r, http.StatusBadRequest, "referenceId, to, and message are required")
+		return
+	}
+
+	payload := map[string]string{
+		"referenceId": req.ReferenceID,
+		"to":          req.To,
+		"message":     req.Message,
+	}
+	if req.TenantID != "" {
+		payload["tenantId"] = req.TenantID
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		s.renderSubmissionFailure(w, r, http.StatusInternalServerError, "encode payload failed")
+		return
+	}
+
+	intentReq := submissionIntentRequest{
+		IntentID:         req.ReferenceID,
+		SubmissionTarget: s.config.SMSSubmissionTarget,
+		Payload:          payloadBytes,
+	}
+
+	status, body, contentType, err := s.submitIntent(r.Context(), intentReq)
+	if err != nil {
+		s.renderSubmissionFailure(w, r, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	if !isHTMX(r) {
+		if contentType != "" {
+			w.Header().Set("Content-Type", contentType)
+		}
+		w.WriteHeader(status)
+		if _, err := w.Write(body); err != nil {
+			log.Printf("write submission response: %v", err)
+		}
+		return
+	}
+
+	view := submissionResultView{}
+	if status >= http.StatusOK && status < http.StatusMultipleChoices {
+		var resp submissionIntentResponse
+		if err := json.Unmarshal(body, &resp); err != nil {
+			s.renderSubmissionFailure(w, r, http.StatusBadGateway, "decode response failed")
+			return
+		}
+		view.IntentID = resp.IntentID
+		view.StatusEndpoint = statusEndpoint("/sms/status", resp.IntentID)
+		view.Status = resp.Status
+		view.RejectedReason = resp.RejectedReason
+		view.ExhaustedReason = resp.ExhaustedReason
+		view.CompletedAt = resp.CompletedAt
+	} else {
+		view.Error = submissionErrorMessage(body)
+		if view.Error == "" {
+			view.Error = "submission failed"
+		}
+	}
+
+	s.renderSubmissionResult(w, status, view)
+}
+
+func (s *portalServer) handlePushSubmission(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req pushTestRequest
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&req); err != nil {
+		s.renderSubmissionFailure(w, r, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		s.renderSubmissionFailure(w, r, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	req.ReferenceID = strings.TrimSpace(req.ReferenceID)
+	req.Token = strings.TrimSpace(req.Token)
+	req.Title = strings.TrimSpace(req.Title)
+	req.Body = strings.TrimSpace(req.Body)
+	req.TenantID = strings.TrimSpace(req.TenantID)
+	if req.ReferenceID == "" || req.Token == "" {
+		s.renderSubmissionFailure(w, r, http.StatusBadRequest, "referenceId and token are required")
+		return
+	}
+
+	payload := map[string]string{
+		"referenceId": req.ReferenceID,
+		"token":       req.Token,
+	}
+	if req.Title != "" {
+		payload["title"] = req.Title
+	}
+	if req.Body != "" {
+		payload["body"] = req.Body
+	}
+	if req.TenantID != "" {
+		payload["tenantId"] = req.TenantID
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		s.renderSubmissionFailure(w, r, http.StatusInternalServerError, "encode payload failed")
+		return
+	}
+
+	intentReq := submissionIntentRequest{
+		IntentID:         req.ReferenceID,
+		SubmissionTarget: s.config.PushSubmissionTarget,
+		Payload:          payloadBytes,
+	}
+
+	status, body, contentType, err := s.submitIntent(r.Context(), intentReq)
+	if err != nil {
+		s.renderSubmissionFailure(w, r, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	if !isHTMX(r) {
+		if contentType != "" {
+			w.Header().Set("Content-Type", contentType)
+		}
+		w.WriteHeader(status)
+		if _, err := w.Write(body); err != nil {
+			log.Printf("write submission response: %v", err)
+		}
+		return
+	}
+
+	view := submissionResultView{}
+	if status >= http.StatusOK && status < http.StatusMultipleChoices {
+		var resp submissionIntentResponse
+		if err := json.Unmarshal(body, &resp); err != nil {
+			s.renderSubmissionFailure(w, r, http.StatusBadGateway, "decode response failed")
+			return
+		}
+		view.IntentID = resp.IntentID
+		view.StatusEndpoint = statusEndpoint("/push/status", resp.IntentID)
+		view.Status = resp.Status
+		view.RejectedReason = resp.RejectedReason
+		view.ExhaustedReason = resp.ExhaustedReason
+		view.CompletedAt = resp.CompletedAt
+	} else {
+		view.Error = submissionErrorMessage(body)
+		if view.Error == "" {
+			view.Error = "submission failed"
+		}
+	}
+
+	s.renderSubmissionResult(w, status, view)
+}
+
+func (s *portalServer) submitIntent(ctx context.Context, intent submissionIntentRequest) (int, []byte, string, error) {
+	targetURL, err := buildTargetURL(s.config.SubmissionManagerURL, "/v1/intents", "", false)
+	if err != nil {
+		return 0, nil, "", err
+	}
+	body, err := json.Marshal(intent)
+	if err != nil {
+		return 0, nil, "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return 0, nil, "", err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, "", err
+	}
+	return resp.StatusCode, respBody, resp.Header.Get("Content-Type"), nil
+}
+
+func (s *portalServer) fetchIntent(ctx context.Context, intentID string) (int, []byte, string, error) {
+	escaped := url.PathEscape(intentID)
+	targetURL, err := buildTargetURL(s.config.SubmissionManagerURL, "/v1/intents/"+escaped, "", false)
+	if err != nil {
+		return 0, nil, "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
+	if err != nil {
+		return 0, nil, "", err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return 0, nil, "", err
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, "", err
+	}
+	return resp.StatusCode, respBody, resp.Header.Get("Content-Type"), nil
+}
+
+func (s *portalServer) renderSubmissionResult(w http.ResponseWriter, status int, view submissionResultView) {
+	if s.templates.submissionResult == nil {
+		http.Error(w, "template not configured", http.StatusInternalServerError)
+		return
+	}
+	fragment, err := executeTemplate(s.templates.submissionResult, "submission_result.tmpl", view)
+	if err != nil {
+		http.Error(w, "render error", http.StatusInternalServerError)
+		return
+	}
+	if status >= http.StatusBadRequest {
+		status = http.StatusOK
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if _, err := w.Write(fragment); err != nil {
+		log.Printf("write submission fragment: %v", err)
+	}
+}
+
+func (s *portalServer) renderSubmissionFailure(w http.ResponseWriter, r *http.Request, status int, message string) {
+	if !isHTMX(r) {
+		http.Error(w, message, status)
+		return
+	}
+	s.renderSubmissionResult(w, status, submissionResultView{Error: message})
+}
+
+func submissionErrorMessage(body []byte) string {
+	var errResp submissionErrorResponse
+	if err := json.Unmarshal(body, &errResp); err != nil {
+		return ""
+	}
+	if strings.TrimSpace(errResp.Error.Message) != "" {
+		return errResp.Error.Message
+	}
+	return strings.TrimSpace(errResp.Error.Code)
+}
+
+func statusEndpoint(basePath, intentID string) string {
+	if strings.TrimSpace(intentID) == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s?intentId=%s", basePath, url.QueryEscape(intentID))
 }
 
 func (s *portalServer) proxyUI(w http.ResponseWriter, r *http.Request, baseURL, prefix, active string, embed bool) {
@@ -292,6 +747,12 @@ func (s *portalServer) proxyUI(w http.ResponseWriter, r *http.Request, baseURL, 
 	contentType := resp.Header.Get("Content-Type")
 	if strings.HasPrefix(contentType, "text/html") {
 		body = rewriteUIPaths(body, prefix)
+		if prefix == "/sms" && s.useSubmissionManagerSMS() {
+			body = rewriteSubmissionCopy(body, "/sms/send")
+		}
+		if prefix == "/push" && s.useSubmissionManagerPush() {
+			body = rewriteSubmissionCopy(body, "/push/send")
+		}
 		if prefix == "/sms" {
 			body = bytes.ReplaceAll(body, []byte("Troubleshoot by ReferenceId"), []byte("Troubleshoot"))
 		}
@@ -450,7 +911,17 @@ func loadPortalTemplates(uiDir string) (portalTemplates, error) {
 	if err != nil {
 		return portalTemplates{}, err
 	}
-	return portalTemplates{topbar: topbar, overview: overview, haproxy: haproxy, errView: errView}, nil
+	submissionResult, err := template.ParseFiles(filepath.Join(uiDir, "submission_result.tmpl"))
+	if err != nil {
+		return portalTemplates{}, err
+	}
+	return portalTemplates{
+		topbar:           topbar,
+		overview:         overview,
+		haproxy:          haproxy,
+		errView:          errView,
+		submissionResult: submissionResult,
+	}, nil
 }
 
 func buildConsoleViews(cfg fileConfig) []consoleView {
@@ -481,6 +952,17 @@ func rewriteUIPaths(input []byte, prefix string) []byte {
 	output = strings.ReplaceAll(output, "=\"/ui", "=\""+prefix+"/ui")
 	output = strings.ReplaceAll(output, "='/ui", "='"+prefix+"/ui")
 	return []byte(output)
+}
+
+func rewriteSubmissionCopy(input []byte, sendEndpoint string) []byte {
+	text := string(input)
+	manual := fmt.Sprintf("Manual submission to the gateway. This mirrors POST %s and returns the raw response.", sendEndpoint)
+	text = strings.ReplaceAll(text, manual, "Manual submission via SubmissionManager. This creates an intent and shows the current status.")
+	text = strings.ReplaceAll(text, "No retry, no send again, no history. Use referenceId values you can trace in logs.", "SubmissionManager owns retries and history. Use referenceId values you can trace in logs.")
+	text = strings.ReplaceAll(text, "<h2>Gateway response</h2>", "<h2>Submission response</h2>")
+	text = strings.ReplaceAll(text, "Submit a request to see status, reason, and gatewayMessageId.", "Submit a request to see the current intent status.")
+	text = strings.ReplaceAll(text, "Accepted means submitted, not delivered. This console does not infer delivery or retries.", "Accepted means submitted, not delivered. SubmissionManager does not infer delivery.")
+	return []byte(text)
 }
 
 func stripThemeToggle(input []byte) []byte {
@@ -680,6 +1162,9 @@ func normalizeConfig(cfg fileConfig) fileConfig {
 	cfg.Title = strings.TrimSpace(cfg.Title)
 	cfg.SMSGatewayURL = strings.TrimRight(strings.TrimSpace(cfg.SMSGatewayURL), "/")
 	cfg.PushGatewayURL = strings.TrimRight(strings.TrimSpace(cfg.PushGatewayURL), "/")
+	cfg.SubmissionManagerURL = strings.TrimRight(strings.TrimSpace(cfg.SubmissionManagerURL), "/")
+	cfg.SMSSubmissionTarget = strings.TrimSpace(cfg.SMSSubmissionTarget)
+	cfg.PushSubmissionTarget = strings.TrimSpace(cfg.PushSubmissionTarget)
 	cfg.CommandCenterURL = strings.TrimRight(strings.TrimSpace(cfg.CommandCenterURL), "/")
 	cfg.HAProxyStatsURL = strings.TrimSpace(cfg.HAProxyStatsURL)
 	return cfg

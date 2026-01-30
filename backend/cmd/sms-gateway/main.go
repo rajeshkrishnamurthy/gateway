@@ -412,7 +412,7 @@ func handleSMSSend(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry, se
 		var req gateway.SMSRequest
 		if err := dec.Decode(&req); err != nil {
 			log.Printf("sms decision referenceId=%q status=rejected reason=invalid_request source=validation detail=decode_error err=%v", "", err)
-			writeSMSSendResponse(w, r, http.StatusBadRequest, gateway.SMSResponse{
+			writeSMSSendResponse(w, r, http.StatusOK, gateway.SMSResponse{
 				Status: "rejected",
 				Reason: "invalid_request",
 			}, sendResult)
@@ -423,7 +423,7 @@ func handleSMSSend(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry, se
 		}
 		if err := dec.Decode(&struct{}{}); err != io.EOF {
 			log.Printf("sms decision referenceId=%q status=rejected reason=invalid_request source=validation detail=trailing_json", req.ReferenceID)
-			writeSMSSendResponse(w, r, http.StatusBadRequest, gateway.SMSResponse{
+			writeSMSSendResponse(w, r, http.StatusOK, gateway.SMSResponse{
 				Status: "rejected",
 				Reason: "invalid_request",
 			}, sendResult)
@@ -434,10 +434,6 @@ func handleSMSSend(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry, se
 		}
 
 		resp, err := gw.SendSMS(r.Context(), req)
-		status := http.StatusOK
-		if err != nil && errors.Is(err, gateway.ErrInvalidRequest) {
-			status = http.StatusBadRequest
-		}
 		source := "provider_result"
 		if err != nil && errors.Is(err, gateway.ErrInvalidRequest) {
 			switch resp.Reason {
@@ -457,7 +453,7 @@ func handleSMSSend(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry, se
 			source,
 			resp.GatewayMessageID,
 		)
-		writeSMSSendResponse(w, r, status, resp, sendResult)
+		writeSMSSendResponse(w, r, http.StatusOK, resp, sendResult)
 		if metricsRegistry != nil {
 			metricsRegistry.ObserveRequest(resp.Status, resp.Reason, time.Since(start))
 		}
