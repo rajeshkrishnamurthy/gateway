@@ -61,21 +61,24 @@ When writing complex features or significant refactors, use an ExecPlan (as desc
 - Treat `backend/spec/` as canonical for system semantics.
 - When behavior or semantics change, update the relevant spec/README in the same change.
 
-## Comments (Strict)
-- Package-level doc comments (for godoc) are allowed.
-- Exported API comments (capitalized identifiers) are allowed.
+## Comments (Strict, drift-resistant)
+- Purpose: comments must capture intent or constraints that are not obvious from code alone. Anything else belongs in specs/README.
+- Package-level doc comments (for godoc) are allowed and should summarize module purpose and boundaries.
+- Exported API comments (capitalized identifiers) are allowed and should describe behavior and invariants.
 - Inline comments are allowed only for these topics:
   - Concurrency/locking intent: why a lock is held or released at a specific point.
   - Queue semantics: ordering rules, fairness, and why seq is used for FIFO.
   - Policy vs outcome: why a decision is made (for example, deadline check only for accepted).
   - Idempotency invariants: what constitutes conflict and why it is strict.
   - Non-obvious constraints: invariants like “contract snapshot must not change after submit.”
-- Do not comment obvious control flow or arithmetic.
-- Prefer clearer naming or structure over comments.
-- Comments explain why a constraint exists, not what the code does.
-- If a comment can be removed without loss of understanding, it should not exist.
-- Do not comment error variables, constants, or fields if names are self-explanatory.
-- Do not add doc-comments by default; comments must earn their existence within the allowed topics.
+  - Flow intent (limited): a single-line header at the start of a complex function (roughly >40 LOC or multiple branches) describing the goal in one sentence. No step-by-step narration.
+- Forbidden:
+  - Explaining Go syntax.
+  - Restating code (“set x to y”, “loop over items”).
+  - Multi-line walkthroughs.
+- Drift prevention:
+  - Any behavior change must update affected comments in the same diff.
+  - If a comment references a policy or constraint, it must remain aligned with the relevant spec; prefer brief “see <spec file>” references.
 
 ## Tests
 - Tests should be boring and obvious.

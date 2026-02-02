@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,8 @@ type submitRequest struct {
 	SubmissionTarget string          `json:"submissionTarget"`
 	Payload          json.RawMessage `json:"payload"`
 }
+
+const maxWaitSeconds = 30
 
 type intentResponse struct {
 	IntentID         string `json:"intentId"`
@@ -89,8 +92,16 @@ func handleReadyz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *apiServer) handleSubmit(w http.ResponseWriter, r *http.Request) {
+	// Flow intent: check input, submit, maybe wait, return intent.
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", nil)
+		return
+	}
+
+	// Non-obvious constraint: waitSeconds only controls how long we wait; it must not change idempotency or storage.
+	wait, err := parseWaitSeconds(r.URL.Query().Get("waitSeconds"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
 		return
 	}
 
@@ -137,10 +148,24 @@ func (s *apiServer) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if wait > 0 {
+		waited, ok, err := s.manager.WaitForIntent(r.Context(), stored.IntentID, wait)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "internal error", nil)
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "not_found", "intent not found", map[string]string{"intentId": stored.IntentID})
+			return
+		}
+		stored = waited
+	}
+
 	writeJSON(w, http.StatusOK, toIntentResponse(stored))
 }
 
 func (s *apiServer) handleGet(w http.ResponseWriter, r *http.Request) {
+	// Flow intent: find intent or history and return it.
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", nil)
 		return
@@ -258,4 +283,22 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func parseWaitSeconds(raw string) (time.Duration, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, errors.New("waitSeconds must be a non-negative integer")
+	}
+	if value < 0 {
+		return 0, errors.New("waitSeconds must be a non-negative integer")
+	}
+	if value > maxWaitSeconds {
+		value = maxWaitSeconds
+	}
+	return time.Duration(value) * time.Second, nil
 }

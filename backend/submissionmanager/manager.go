@@ -16,6 +16,7 @@ import (
 )
 
 const retryDelay = 5 * time.Second
+const waitPollInterval = 250 * time.Millisecond
 
 const (
 	gatewayAccepted = "accepted"
@@ -176,6 +177,7 @@ func (m *Manager) SetMetrics(metrics *Metrics) {
 
 // Run executes scheduled attempts until the context is canceled.
 func (m *Manager) Run(ctx context.Context) {
+	// Flow intent: run due attempts in time order until stop.
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -201,8 +203,8 @@ func (m *Manager) Run(ctx context.Context) {
 		now := m.clock.Now()
 		wait := next.due.Sub(now)
 		if wait <= 0 {
-			// Pop under lock for queue consistency; execute outside the lock to avoid
-			// holding it across the external executor call.
+			// Concurrency/locking intent: pop under lock so the queue stays correct,
+			// then run outside the lock so we do not hold it during the gateway call.
 			heap.Pop(&m.queue)
 			if m.metrics != nil {
 				m.metrics.SetQueueDepth(len(m.queue.items))
@@ -226,6 +228,7 @@ func (m *Manager) Run(ctx context.Context) {
 
 // SubmitIntent registers an intent and schedules its first attempt.
 func (m *Manager) SubmitIntent(ctx context.Context, intent Intent) (Intent, error) {
+	// Flow intent: check idempotency, store intent, schedule first attempt.
 	intentID := strings.TrimSpace(intent.IntentID)
 	if intentID == "" {
 		return Intent{}, errors.New("intentId is required")
@@ -288,6 +291,60 @@ func (m *Manager) GetIntent(intentID string) (Intent, bool) {
 	return intent, true
 }
 
+// WaitForIntent polls SQL until the intent reaches a terminal state, completes its first attempt,
+// or the wait duration elapses.
+func (m *Manager) WaitForIntent(ctx context.Context, intentID string, wait time.Duration) (Intent, bool, error) {
+	// Flow intent: poll SQL until terminal, first attempt done, or timeout.
+	trimmed := strings.TrimSpace(intentID)
+	if trimmed == "" {
+		return Intent{}, false, nil
+	}
+	if wait <= 0 {
+		intent, ok := m.GetIntent(trimmed)
+		return intent, ok, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	deadline := m.clock.Now().Add(wait)
+	var last Intent
+	var ok bool
+
+	for {
+		// Non-obvious constraint: read SQL because the executor may be another process.
+		intent, attemptCount, found, err := m.store.loadIntentRow(context.Background(), trimmed)
+		if err != nil || !found {
+			return Intent{}, found, err
+		}
+		last = intent
+		ok = true
+		if intent.Status == IntentAccepted || intent.Status == IntentRejected || intent.Status == IntentExhausted {
+			return intent, true, nil
+		}
+		// Non-obvious constraint: wait stops after the first attempt, even if still pending.
+		if attemptCount >= 1 {
+			return intent, true, nil
+		}
+
+		now := m.clock.Now()
+		if !now.Before(deadline) {
+			return last, ok, nil
+		}
+		remaining := deadline.Sub(now)
+		waitFor := waitPollInterval
+		if remaining < waitFor {
+			waitFor = remaining
+		}
+
+		select {
+		case <-ctx.Done():
+			return last, ok, nil
+		case <-m.clock.After(waitFor):
+		}
+	}
+}
+
 func (m *Manager) enqueueAttempt(intentID string, due time.Time) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -311,6 +368,7 @@ func (m *Manager) enqueueAttemptLocked(intentID string, due time.Time) {
 }
 
 func (m *Manager) executeAttempt(ctx context.Context, intentID string, due time.Time) {
+	// Flow intent: load intent, call gateway, apply policy, save result.
 	start := m.clock.Now()
 
 	intent, attemptCount, ok, err := m.store.loadIntentForExecution(ctx, intentID, start)
@@ -404,6 +462,7 @@ func (m *Manager) executeAttempt(ctx context.Context, intentID string, due time.
 }
 
 func (m *Manager) evaluateAttempt(intent *Intent, attempt *Attempt) (bool, time.Time) {
+	// Flow intent: read outcome and decide terminal or retry.
 	if attempt.Error != "" {
 		return m.applyPolicy(intent, attempt)
 	}
@@ -443,6 +502,7 @@ func (m *Manager) evaluateAttempt(intent *Intent, attempt *Attempt) (bool, time.
 }
 
 func (m *Manager) applyPolicy(intent *Intent, attempt *Attempt) (bool, time.Time) {
+	// Flow intent: apply policy to decide retry or exhausted.
 	switch intent.Contract.Policy {
 	case submission.PolicyOneShot:
 		intent.Status = IntentExhausted

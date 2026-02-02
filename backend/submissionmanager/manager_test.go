@@ -629,3 +629,63 @@ func TestContractSnapshotStableAfterRegistryChange(t *testing.T) {
 		t.Fatalf("expected contract snapshot url %q, got %q", contract.GatewayURL, intent.Contract.GatewayURL)
 	}
 }
+
+func TestWaitForIntentMissing(t *testing.T) {
+	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
+	contract := baseContract(submission.PolicyOneShot)
+	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
+	stub := newStubExecutor(clock, nil)
+	manager := newManager(t, reg, stub.Exec, clock, db)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	t.Cleanup(cancel)
+
+	intent, ok, err := manager.WaitForIntent(ctx, "missing-intent", time.Second)
+	if err != nil {
+		t.Fatalf("wait: %v", err)
+	}
+	if ok {
+		t.Fatalf("expected not found, got %+v", intent)
+	}
+}
+
+func TestWaitForIntentAfterFirstAttempt(t *testing.T) {
+	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
+	contract := baseContract(submission.PolicyMaxAttempts)
+	contract.MaxAttempts = 3
+	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
+	stub := newStubExecutor(clock, []execResult{{outcome: GatewayOutcome{Status: "rejected", Reason: "provider_failure"}, advance: 1 * time.Second}})
+	manager := newManager(t, reg, stub.Exec, clock, db)
+
+	_, err := manager.SubmitIntent(context.Background(), Intent{
+		IntentID:         "intent-1",
+		SubmissionTarget: contract.SubmissionTarget,
+	})
+	if err != nil {
+		t.Fatalf("submit intent: %v", err)
+	}
+
+	_, cancel, done := startManager(t, manager)
+	defer func() {
+		cancel()
+		<-done
+	}()
+	waitForCall(t, stub.calls)
+
+	ctx, cancelWait := context.WithTimeout(context.Background(), 3*time.Second)
+	t.Cleanup(cancelWait)
+
+	intent, ok, err := manager.WaitForIntent(ctx, "intent-1", 3*time.Second)
+	if err != nil {
+		t.Fatalf("wait: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected intent found")
+	}
+	if intent.Status != IntentPending {
+		t.Fatalf("expected pending after first attempt, got %q", intent.Status)
+	}
+	_ = waitForAttempts(t, manager, "intent-1", 1)
+}

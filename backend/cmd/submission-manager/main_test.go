@@ -35,7 +35,8 @@ func newTestManager(t *testing.T, db *sql.DB) *submissionmanager.Manager {
 		SubmissionTarget: "sms.realtime",
 		GatewayType:      submission.GatewaySMS,
 		GatewayURL:       "http://localhost:8080",
-		Policy:           submission.PolicyOneShot,
+		Policy:           submission.PolicyMaxAttempts,
+		MaxAttempts:      3,
 		TerminalOutcomes: []string{"invalid_request"},
 	}
 	registry := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
@@ -171,6 +172,92 @@ func TestSubmitUnknownTarget(t *testing.T) {
 	server.handleSubmit(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+func TestSubmitWaitSecondsInvalid(t *testing.T) {
+	db := newTestDB(t)
+	manager := newTestManager(t, db)
+	server := &apiServer{manager: manager}
+
+	body := `{"intentId":"intent-1","submissionTarget":"sms.realtime","payload":{"to":"+1","message":"hello"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/intents?waitSeconds=bad", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	server.handleSubmit(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+func TestSubmitWaitSecondsNegative(t *testing.T) {
+	db := newTestDB(t)
+	manager := newTestManager(t, db)
+	server := &apiServer{manager: manager}
+
+	body := `{"intentId":"intent-1","submissionTarget":"sms.realtime","payload":{"to":"+1","message":"hello"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/intents?waitSeconds=-1", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	server.handleSubmit(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+func TestSubmitWaitSecondsTimeout(t *testing.T) {
+	db := newTestDB(t)
+	manager := newTestManager(t, db)
+	server := &apiServer{manager: manager}
+
+	body := `{"intentId":"intent-1","submissionTarget":"sms.realtime","payload":{"to":"+1","message":"hello"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/intents?waitSeconds=1", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	start := time.Now()
+	server.handleSubmit(rr, req)
+	elapsed := time.Since(start)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if elapsed < 900*time.Millisecond {
+		t.Fatalf("expected wait before timeout, elapsed %s", elapsed)
+	}
+
+	var resp intentResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Status != string(submissionmanager.IntentPending) {
+		t.Fatalf("expected pending status, got %q", resp.Status)
+	}
+}
+
+func TestSubmitWaitSecondsEarlyReturn(t *testing.T) {
+	db := newTestDB(t)
+	manager := newTestManager(t, db)
+	server := &apiServer{manager: manager}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go manager.Run(ctx)
+
+	body := `{"intentId":"intent-1","submissionTarget":"sms.realtime","payload":{"to":"+1","message":"hello"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/intents?waitSeconds=5", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	start := time.Now()
+	server.handleSubmit(rr, req)
+	elapsed := time.Since(start)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if elapsed > 4*time.Second {
+		t.Fatalf("expected early return, elapsed %s", elapsed)
+	}
+
+	var resp intentResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Status != string(submissionmanager.IntentPending) {
+		t.Fatalf("expected pending status after first attempt, got %q", resp.Status)
 	}
 }
 

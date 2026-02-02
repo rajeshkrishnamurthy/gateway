@@ -44,7 +44,7 @@ go run ./cmd/submission-manager \\
 
 Endpoints:
 
-- POST `http://localhost:8082/v1/intents`
+- POST `http://localhost:8082/v1/intents` (optional `waitSeconds` query param for synchronous wait)
 - GET `http://localhost:8082/v1/intents/{intentId}`
 
 Response JSON:
