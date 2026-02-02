@@ -6,5 +6,5 @@
   "pushProviderUrl": "https://fcm.googleapis.com/v1/projects/enc-scb/messages:send",
   "pushProviderConnectTimeoutSeconds": 2,
   "pushProviderTimeoutSeconds": 30,
-  "grafanaDashboardUrl": "http://localhost:3000/d/gateway-overview-push"
+  "grafanaDashboardUrl": "http://localhost:3000/d/gateway-overview-push?kiosk=tv"
 }

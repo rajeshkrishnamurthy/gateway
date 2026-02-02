@@ -23,6 +23,18 @@ func loadPortalTemplates(uiDir string) (portalTemplates, error) {
 	if err != nil {
 		return portalTemplates{}, err
 	}
+	troubleshoot, err := template.ParseFiles(filepath.Join(uiDir, "portal_troubleshoot.tmpl"))
+	if err != nil {
+		return portalTemplates{}, err
+	}
+	dashboards, err := template.ParseFiles(filepath.Join(uiDir, "portal_dashboards.tmpl"))
+	if err != nil {
+		return portalTemplates{}, err
+	}
+	dashboardEmbed, err := template.ParseFiles(filepath.Join(uiDir, "portal_dashboard_embed.tmpl"))
+	if err != nil {
+		return portalTemplates{}, err
+	}
 	submissionResult, err := template.ParseFiles(filepath.Join(uiDir, "submission_result.tmpl"))
 	if err != nil {
 		return portalTemplates{}, err
@@ -32,6 +44,9 @@ func loadPortalTemplates(uiDir string) (portalTemplates, error) {
 		overview:         overview,
 		haproxy:          haproxy,
 		errView:          errView,
+		troubleshoot:     troubleshoot,
+		dashboards:       dashboards,
+		dashboardEmbed:   dashboardEmbed,
 		submissionResult: submissionResult,
 	}, nil
 }

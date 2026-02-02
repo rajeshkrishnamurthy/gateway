@@ -20,7 +20,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -42,10 +41,7 @@ const (
 	maxProviderConnectTimeout = 10 * time.Second
 )
 
-const (
-	uiLogCapacity    = 1000
-	uiLogResultLimit = 200
-)
+const ()
 
 var latencyBuckets = []time.Duration{
 	100 * time.Millisecond,
@@ -68,12 +64,10 @@ type fileConfig struct {
 }
 
 type uiTemplates struct {
-	overview            *template.Template
-	send                *template.Template
-	sendResult          *template.Template
-	troubleshoot        *template.Template
-	troubleshootResults *template.Template
-	metrics             *template.Template
+	overview   *template.Template
+	send       *template.Template
+	sendResult *template.Template
+	metrics    *template.Template
 }
 
 type uiServer struct {
@@ -91,13 +85,13 @@ type uiServer struct {
 	providerTimeout time.Duration
 	startTime       time.Time
 	metricsRegistry *metrics.Registry
-	logBuffer       *logBuffer
 }
 
 type overviewView struct {
 	ConsoleTitle    string
 	SendNavLabel    string
 	MetricsURL      string
+	ShowNav         bool
 	GatewayName     string
 	Version         string
 	ProviderName    string
@@ -105,19 +99,11 @@ type overviewView struct {
 	Uptime          string
 }
 
-type troubleshootView struct {
-	SendNavLabel     string
-	MetricsURL       string
-	ReferenceID      string
-	ProviderDecision string
-	MappingDecision  string
-	FinalOutcome     string
-	Entries          []logEntry
-}
-
 type metricsView struct {
 	SendNavLabel         string
 	MetricsURL           string
+	ShowNav              bool
+	Title                string
 	TotalRequests        string
 	AcceptedTotal        string
 	RejectedTotal        string
@@ -132,6 +118,7 @@ type sendView struct {
 	SendEndpoint string
 	SendNavLabel string
 	MetricsURL   string
+	ShowNav      bool
 	IsPush       bool
 }
 
@@ -143,18 +130,6 @@ type rejectionCount struct {
 type latencyBucket struct {
 	Label string
 	Count string
-}
-
-type logEntry struct {
-	Timestamp string
-	Line      string
-}
-
-type logBuffer struct {
-	mu       sync.Mutex
-	capacity int
-	entries  []logEntry
-	partial  string
 }
 
 func main() {
@@ -174,8 +149,6 @@ func main() {
 	}
 
 	startTime := time.Now()
-	logBuffer := newLogBuffer(uiLogCapacity)
-	log.SetOutput(io.MultiWriter(os.Stderr, logBuffer))
 
 	providerTimeout := time.Duration(cfg.SMSProviderTimeoutSeconds) * time.Second
 	providerConnectTimeout := time.Duration(cfg.SMSProviderConnectTimeoutSeconds) * time.Second
@@ -194,7 +167,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ui, err := newUIServer(providerName, providerTimeout, cfg.GrafanaDashboardURL, metricsRegistry, logBuffer, startTime)
+	ui, err := newUIServer(providerName, providerTimeout, cfg.GrafanaDashboardURL, metricsRegistry, startTime)
 	if err != nil {
 		log.Printf("ui disabled: %v", err)
 	}
@@ -379,7 +352,6 @@ func newMux(gw *gateway.SMSGateway, metricsRegistry *metrics.Registry, ui *uiSer
 		mux.Handle("/ui/static/", http.StripPrefix("/ui/static/", http.FileServer(http.Dir(ui.staticDir))))
 		mux.HandleFunc("/ui", ui.handleOverview)
 		mux.HandleFunc("/ui/send", ui.handleSend)
-		mux.HandleFunc("/ui/troubleshoot", ui.handleTroubleshoot)
 		mux.HandleFunc("/ui/metrics", ui.handleUIMetrics)
 	}
 	return mux
@@ -509,7 +481,12 @@ func isHTMX(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true"
 }
 
-func newUIServer(providerName string, providerTimeout time.Duration, grafanaDashboardURL string, metricsRegistry *metrics.Registry, logBuffer *logBuffer, startTime time.Time) (*uiServer, error) {
+func isEmbed(r *http.Request) bool {
+	embed := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("embed")))
+	return embed == "1" || embed == "true"
+}
+
+func newUIServer(providerName string, providerTimeout time.Duration, grafanaDashboardURL string, metricsRegistry *metrics.Registry, startTime time.Time) (*uiServer, error) {
 	uiDir, err := findUIDir()
 	if err != nil {
 		return nil, err
@@ -534,7 +511,6 @@ func newUIServer(providerName string, providerTimeout time.Duration, grafanaDash
 		providerTimeout: providerTimeout,
 		startTime:       startTime,
 		metricsRegistry: metricsRegistry,
-		logBuffer:       logBuffer,
 	}, nil
 }
 
@@ -594,25 +570,15 @@ func loadUITemplates(uiDir string) (uiTemplates, error) {
 	if err != nil {
 		return uiTemplates{}, err
 	}
-	troubleshoot, err := template.ParseFiles(filepath.Join(uiDir, "nav.tmpl"), filepath.Join(uiDir, "troubleshoot.tmpl"))
-	if err != nil {
-		return uiTemplates{}, err
-	}
-	troubleshootResults, err := template.ParseFiles(filepath.Join(uiDir, "troubleshoot_results.tmpl"))
-	if err != nil {
-		return uiTemplates{}, err
-	}
 	metrics, err := template.ParseFiles(filepath.Join(uiDir, "nav.tmpl"), filepath.Join(uiDir, "metrics.tmpl"))
 	if err != nil {
 		return uiTemplates{}, err
 	}
 	return uiTemplates{
-		overview:            overview,
-		send:                send,
-		sendResult:          sendResult,
-		troubleshoot:        troubleshoot,
-		troubleshootResults: troubleshootResults,
-		metrics:             metrics,
+		overview:   overview,
+		send:       send,
+		sendResult: sendResult,
+		metrics:    metrics,
 	}, nil
 }
 
@@ -621,10 +587,12 @@ func (u *uiServer) handleOverview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	showNav := !isEmbed(r)
 	view := overviewView{
 		ConsoleTitle:    u.consoleTitle,
 		SendNavLabel:    u.sendNavLabel,
 		MetricsURL:      u.metricsURL,
+		ShowNav:         showNav,
 		GatewayName:     u.gatewayName,
 		Version:         u.version,
 		ProviderName:    u.providerName,
@@ -639,48 +607,16 @@ func (u *uiServer) handleSend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	showNav := !isEmbed(r)
 	view := sendView{
 		SendTitle:    u.sendTitle,
 		SendEndpoint: u.sendEndpoint,
 		SendNavLabel: u.sendNavLabel,
 		MetricsURL:   u.metricsURL,
+		ShowNav:      showNav,
 		IsPush:       u.isPush,
 	}
 	u.renderPage(w, r, u.templates.send, "send.tmpl", view)
-}
-
-func (u *uiServer) handleTroubleshoot(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		view := troubleshootView{
-			SendNavLabel: u.sendNavLabel,
-			MetricsURL:   u.metricsURL,
-		}
-		u.renderPage(w, r, u.templates.troubleshoot, "troubleshoot.tmpl", view)
-	case http.MethodPost:
-		if err := r.ParseForm(); err != nil {
-			http.Error(w, "invalid form", http.StatusBadRequest)
-			return
-		}
-		referenceID := strings.TrimSpace(r.FormValue("referenceId"))
-		if referenceID == "" {
-			http.Error(w, "referenceId is required", http.StatusBadRequest)
-			return
-		}
-		entries := u.logBuffer.entriesForReferenceID(referenceID, uiLogResultLimit)
-		providerDecision, mappingDecision, finalOutcome := summarizeLogEntries(entries)
-		view := troubleshootView{
-			SendNavLabel:     u.sendNavLabel,
-			ReferenceID:      referenceID,
-			ProviderDecision: providerDecision,
-			MappingDecision:  mappingDecision,
-			FinalOutcome:     finalOutcome,
-			Entries:          entries,
-		}
-		renderFragment(w, u.templates.troubleshootResults, "troubleshoot_results.tmpl", view)
-	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-	}
 }
 
 func (u *uiServer) handleUIMetrics(w http.ResponseWriter, r *http.Request) {
@@ -691,6 +627,12 @@ func (u *uiServer) handleUIMetrics(w http.ResponseWriter, r *http.Request) {
 	view := buildMetricsView(u.metricsRegistry)
 	view.SendNavLabel = u.sendNavLabel
 	view.MetricsURL = u.metricsURL
+	view.ShowNav = !isEmbed(r)
+	if u.isPush {
+		view.Title = "Push Gateway Dashboard"
+	} else {
+		view.Title = "SMS Gateway Dashboard"
+	}
 	u.renderPage(w, r, u.templates.metrics, "metrics.tmpl", view)
 }
 
@@ -864,162 +806,4 @@ func parseLabels(labelPart string) map[string]string {
 		labels[key] = value
 	}
 	return labels
-}
-
-func newLogBuffer(capacity int) *logBuffer {
-	return &logBuffer{capacity: capacity}
-}
-
-func (b *logBuffer) Write(p []byte) (int, error) {
-	// Hold the lock while assembling partial lines to keep the buffer consistent across concurrent writes.
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	b.partial += string(p)
-	for {
-		idx := strings.IndexByte(b.partial, '\n')
-		if idx == -1 {
-			break
-		}
-		line := strings.TrimRight(b.partial[:idx], "\r")
-		b.partial = b.partial[idx+1:]
-		if line == "" {
-			continue
-		}
-		entry := parseLogEntry(line)
-		b.append(entry)
-	}
-	return len(p), nil
-}
-
-func (b *logBuffer) append(entry logEntry) {
-	if b.capacity <= 0 {
-		return
-	}
-	if len(b.entries) < b.capacity {
-		b.entries = append(b.entries, entry)
-		return
-	}
-	copy(b.entries, b.entries[1:])
-	b.entries[len(b.entries)-1] = entry
-}
-
-func (b *logBuffer) entriesForReferenceID(referenceID string, limit int) []logEntry {
-	if b == nil || referenceID == "" || limit <= 0 {
-		return nil
-	}
-	// Lock during scan to avoid races with concurrent log writes.
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	needle := fmt.Sprintf("referenceId=%q", referenceID)
-	matches := make([]logEntry, 0, limit)
-	for i := len(b.entries) - 1; i >= 0 && len(matches) < limit; i-- {
-		if strings.Contains(b.entries[i].Line, needle) {
-			matches = append(matches, b.entries[i])
-		}
-	}
-	for i, j := 0, len(matches)-1; i < j; i, j = i+1, j-1 {
-		matches[i], matches[j] = matches[j], matches[i]
-	}
-	return matches
-}
-
-func parseLogEntry(line string) logEntry {
-	timestamp, msg := splitLogTimestamp(line)
-	return logEntry{
-		Timestamp: timestamp,
-		Line:      msg,
-	}
-}
-
-func splitLogTimestamp(line string) (string, string) {
-	if len(line) >= 20 &&
-		line[4] == '/' &&
-		line[7] == '/' &&
-		line[10] == ' ' &&
-		line[13] == ':' &&
-		line[16] == ':' {
-		return line[:19], strings.TrimSpace(line[19:])
-	}
-	return "", line
-}
-
-func summarizeLogEntries(entries []logEntry) (string, string, string) {
-	var providerDecision string
-	var mappingDecision string
-	var finalOutcome string
-	for i := len(entries) - 1; i >= 0; i-- {
-		line := entries[i].Line
-		if finalOutcome == "" && strings.Contains(line, "sms decision") {
-			status := parseQuotedField(line, "status")
-			reason := parseQuotedField(line, "reason")
-			finalOutcome = formatFinalOutcome(status, reason, line)
-		}
-		if providerDecision == "" && strings.Contains(line, "sms provider decision") {
-			providerDecision = line
-			if mappingDecision == "" {
-				mappingDecision = parseField(line, "mapped")
-			}
-		}
-		if providerDecision == "" && strings.Contains(line, "sms provider response") {
-			providerDecision = line
-		}
-		if providerDecision == "" && strings.Contains(line, "sms provider error") {
-			providerDecision = line
-		}
-		if mappingDecision == "" && strings.Contains(line, "mapped=") {
-			mappingDecision = parseField(line, "mapped")
-		}
-	}
-	return providerDecision, mappingDecision, finalOutcome
-}
-
-func parseQuotedField(line, field string) string {
-	needle := field + "=\""
-	idx := strings.Index(line, needle)
-	if idx == -1 {
-		return ""
-	}
-	start := idx + len(needle)
-	end := strings.Index(line[start:], "\"")
-	if end == -1 {
-		return ""
-	}
-	return line[start : start+end]
-}
-
-func parseField(line, field string) string {
-	needle := field + "="
-	idx := strings.Index(line, needle)
-	if idx == -1 {
-		return ""
-	}
-	start := idx + len(needle)
-	end := strings.IndexFunc(line[start:], func(r rune) bool {
-		return r == ' ' || r == '\t'
-	})
-	if end == -1 {
-		return line[start:]
-	}
-	return line[start : start+end]
-}
-
-func formatFinalOutcome(status, reason, fallback string) string {
-	if status == "" {
-		return fallback
-	}
-	if status == "accepted" {
-		return "accepted"
-	}
-	if status == "rejected" {
-		if reason != "" {
-			return "rejected (" + reason + ")"
-		}
-		return "rejected"
-	}
-	if reason != "" {
-		return status + " (" + reason + ")"
-	}
-	return status
 }

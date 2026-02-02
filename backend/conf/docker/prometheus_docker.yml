@@ -13,3 +13,8 @@ scrape_configs:
     metrics_path: "/metrics"
     static_configs:
       - targets: ["push-gateway-1:8081", "push-gateway-2:8081"]
+
+  - job_name: "submission-manager"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["submission-manager:8082"]

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -63,9 +62,6 @@ func (s *portalServer) proxyUI(w http.ResponseWriter, r *http.Request, baseURL, 
 		}
 		if prefix == "/push" && s.useSubmissionManagerPush() {
 			body = rewriteSubmissionCopy(body, "/push/send")
-		}
-		if prefix == "/sms" {
-			body = bytes.ReplaceAll(body, []byte("Troubleshoot by ReferenceId"), []byte("Troubleshoot"))
 		}
 		if embed {
 			body = stripThemeToggle(body)

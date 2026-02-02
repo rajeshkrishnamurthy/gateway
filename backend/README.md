@@ -198,11 +198,6 @@ It must not be assumed to exist:
 Gateway enforces idempotency only for concurrent in-flight requests within a single process using referenceId.
 It does not guarantee idempotency across time, retries, or restarts, so a duplicate after a request completes may be accepted.
 
-## Troubleshooting
-
-Gateway troubleshooting is log-based.
-Submission behavior can be reconstructed using the client-supplied referenceId.
-
 ## Metrics
 
 Gateway exposes Prometheus metrics at `/metrics`.

@@ -8,5 +8,5 @@
   # smsinfobip requires SMSINFOBIP_API_KEY in the environment.
   # smsinfobip-only settings.
   "smsProviderSenderId": "dummy-sender",
-  "grafanaDashboardUrl": "http://localhost:3000/d/gateway-overview-sms"
+  "grafanaDashboardUrl": "http://localhost:3000/d/gateway-overview-sms?kiosk=tv"
 }

@@ -50,6 +50,7 @@ func normalizeConfig(cfg fileConfig) fileConfig {
 	cfg.SMSGatewayURL = strings.TrimRight(strings.TrimSpace(cfg.SMSGatewayURL), "/")
 	cfg.PushGatewayURL = strings.TrimRight(strings.TrimSpace(cfg.PushGatewayURL), "/")
 	cfg.SubmissionManagerURL = strings.TrimRight(strings.TrimSpace(cfg.SubmissionManagerURL), "/")
+	cfg.SubmissionManagerDashboardURL = strings.TrimRight(strings.TrimSpace(cfg.SubmissionManagerDashboardURL), "/")
 	cfg.SMSSubmissionTarget = strings.TrimSpace(cfg.SMSSubmissionTarget)
 	cfg.PushSubmissionTarget = strings.TrimSpace(cfg.PushSubmissionTarget)
 	cfg.CommandCenterURL = strings.TrimRight(strings.TrimSpace(cfg.CommandCenterURL), "/")

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -110,6 +111,41 @@ func TestGetIntent(t *testing.T) {
 	}
 }
 
+func TestGetIntentHistory(t *testing.T) {
+	db := newTestDB(t)
+	manager := newTestManager(t, db)
+	server := &apiServer{manager: manager}
+
+	body := `{"intentId":"intent-1","submissionTarget":"sms.realtime","payload":{"to":"+1","message":"hello"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/intents", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	server.handleSubmit(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/intents/intent-1/history", nil)
+	rr = httptest.NewRecorder()
+	server.handleGet(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var resp intentHistoryResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Intent.IntentID != "intent-1" {
+		t.Fatalf("expected intentId intent-1, got %q", resp.Intent.IntentID)
+	}
+	if resp.Intent.SubmissionTarget != "sms.realtime" {
+		t.Fatalf("expected submissionTarget sms.realtime, got %q", resp.Intent.SubmissionTarget)
+	}
+	if len(resp.Attempts) != 0 {
+		t.Fatalf("expected 0 attempts, got %d", len(resp.Attempts))
+	}
+}
+
 func TestGetIntentNotFound(t *testing.T) {
 	db := newTestDB(t)
 	manager := newTestManager(t, db)
@@ -136,6 +172,97 @@ func TestSubmitUnknownTarget(t *testing.T) {
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rr.Code)
 	}
+}
+
+func TestHandleMetrics(t *testing.T) {
+	metrics := submissionmanager.NewMetrics()
+	metrics.ObserveIntentCreated()
+	handler := handleMetrics(metrics)
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "submission_intents_created_total") {
+		t.Fatalf("expected metrics output, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleMetricsNotConfigured(t *testing.T) {
+	handler := handleMetrics(nil)
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+}
+
+func TestHandleHealthzAndReadyz(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rr := httptest.NewRecorder()
+	handleHealthz(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/healthz", nil)
+	rr = httptest.NewRecorder()
+	handleHealthz(rr, req)
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rr.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rr = httptest.NewRecorder()
+	handleReadyz(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+}
+
+func TestHandleHistoryResults(t *testing.T) {
+	db := newTestDB(t)
+	manager := newTestManager(t, db)
+	server := &apiServer{manager: manager}
+
+	body := `{"intentId":"intent-1","submissionTarget":"sms.realtime","payload":{"to":"+1","message":"hello"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/intents", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	server.handleSubmit(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	ui := newTestUIServerWithManager(manager)
+	form := strings.NewReader("intentId=intent-1")
+	req = httptest.NewRequest(http.MethodPost, "/ui/history", form)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr = httptest.NewRecorder()
+	ui.handleHistory(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "intent-1") {
+		t.Fatalf("expected intentId in response, got %q", rr.Body.String())
+	}
+}
+
+func newTestUIServer() *managerUIServer {
+	history := template.Must(template.New("manager_history_results.tmpl").Parse(`{{define "manager_history_results.tmpl"}}history {{.IntentID}}{{end}}`))
+	return &managerUIServer{
+		templates: managerTemplates{
+			historyResults: history,
+		},
+	}
+}
+
+func newTestUIServerWithManager(manager *submissionmanager.Manager) *managerUIServer {
+	ui := newTestUIServer()
+	ui.manager = manager
+	return ui
 }
 
 func newTestDB(t *testing.T) *sql.DB {

@@ -7,14 +7,15 @@ import (
 )
 
 type fileConfig struct {
-	Title                string `json:"title"`
-	SMSGatewayURL        string `json:"smsGatewayUrl"`
-	PushGatewayURL       string `json:"pushGatewayUrl"`
-	SubmissionManagerURL string `json:"submissionManagerUrl"`
-	SMSSubmissionTarget  string `json:"smsSubmissionTarget"`
-	PushSubmissionTarget string `json:"pushSubmissionTarget"`
-	CommandCenterURL     string `json:"commandCenterUrl"`
-	HAProxyStatsURL      string `json:"haproxyStatsUrl"`
+	Title                         string `json:"title"`
+	SMSGatewayURL                 string `json:"smsGatewayUrl"`
+	PushGatewayURL                string `json:"pushGatewayUrl"`
+	SubmissionManagerURL          string `json:"submissionManagerUrl"`
+	SubmissionManagerDashboardURL string `json:"submissionManagerDashboardUrl"`
+	SMSSubmissionTarget           string `json:"smsSubmissionTarget"`
+	PushSubmissionTarget          string `json:"pushSubmissionTarget"`
+	CommandCenterURL              string `json:"commandCenterUrl"`
+	HAProxyStatsURL               string `json:"haproxyStatsUrl"`
 }
 
 type portalTemplates struct {
@@ -22,6 +23,9 @@ type portalTemplates struct {
 	overview         *template.Template
 	haproxy          *template.Template
 	errView          *template.Template
+	troubleshoot     *template.Template
+	dashboards       *template.Template
+	dashboardEmbed   *template.Template
 	submissionResult *template.Template
 }
 
@@ -40,6 +44,11 @@ type submissionResultView struct {
 	ExhaustedReason string
 	CompletedAt     string
 	Error           string
+}
+
+type troubleshootView struct {
+	HistoryAction  string
+	HistoryEnabled bool
 }
 
 type submissionIntentRequest struct {
@@ -84,8 +93,21 @@ type topbarView struct {
 	Active            string
 	ShowSMS           bool
 	ShowPush          bool
-	ShowHAProxy       bool
+	ShowTroubleshoot  bool
+	ShowDashboards    bool
 	ShowCommandCenter bool
+}
+
+type dashboardsView struct {
+	SubmissionURL  string
+	SMSGatewayURL  string
+	PushGatewayURL string
+}
+
+type dashboardEmbedView struct {
+	Title        string
+	Description  string
+	DashboardURL string
 }
 
 type overviewView struct {

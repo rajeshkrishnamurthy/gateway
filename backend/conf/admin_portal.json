@@ -5,6 +5,7 @@
   "smsGatewayUrl": "http://localhost:8080",
   "pushGatewayUrl": "http://localhost:8081",
   "submissionManagerUrl": "http://localhost:8082",
+  "submissionManagerDashboardUrl": "http://localhost:3000/d/submission-manager-overview?kiosk=tv",
   "smsSubmissionTarget": "sms.realtime",
   "pushSubmissionTarget": "push.realtime",
   "commandCenterUrl": "http://localhost:8070",

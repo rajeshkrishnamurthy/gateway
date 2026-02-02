@@ -64,13 +64,25 @@ func main() {
 	if err != nil {
 		log.Fatalf("construct manager: %v", err)
 	}
+	metrics := submissionmanager.NewMetrics()
+	manager.SetMetrics(metrics)
+
+	var uiServer *managerUIServer
+	uiDir, err := findUIDir()
+	if err != nil {
+		log.Printf("ui disabled: %v", err)
+	} else if templates, err := loadManagerTemplates(uiDir); err != nil {
+		log.Printf("ui disabled: %v", err)
+	} else {
+		uiServer = &managerUIServer{templates: templates, manager: manager}
+	}
 
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 	go manager.Run(ctx)
 
 	server := &apiServer{manager: manager}
-	mux := newMux(server)
+	mux := newMux(server, uiServer, metrics)
 
 	httpServer := &http.Server{
 		Addr:    *addrFlag,

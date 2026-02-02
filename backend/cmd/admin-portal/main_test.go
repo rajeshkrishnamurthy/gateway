@@ -93,12 +93,12 @@ func TestParseHAProxyCSVMissingHeader(t *testing.T) {
 }
 
 func TestStripThemeToggle(t *testing.T) {
-	input := `<nav><button id="theme-toggle" class="toggle">Light</button><a href="/ui">Overview</a></nav>`
+	input := `<nav><button id="theme-toggle" class="toggle">Light</button><a href="/command-center/ui">Command Center</a></nav>`
 	got := string(stripThemeToggle([]byte(input)))
 	if strings.Contains(got, "theme-toggle") {
 		t.Fatalf("expected theme toggle to be removed, got %q", got)
 	}
-	if !strings.Contains(got, "Overview") {
+	if !strings.Contains(got, "Command Center") {
 		t.Fatalf("expected navigation content to remain, got %q", got)
 	}
 }
@@ -140,11 +140,12 @@ func TestBuildTargetURLNoEmbed(t *testing.T) {
 
 func TestNormalizeConfig(t *testing.T) {
 	cfg := fileConfig{
-		Title:            "  Portal  ",
-		SMSGatewayURL:    "http://sms.example.com/",
-		PushGatewayURL:   "http://push.example.com///",
-		CommandCenterURL: "http://cc.example.com/ ",
-		HAProxyStatsURL:  " http://haproxy.example.com/stats;csv ",
+		Title:                         "  Portal  ",
+		SMSGatewayURL:                 "http://sms.example.com/",
+		PushGatewayURL:                "http://push.example.com///",
+		SubmissionManagerDashboardURL: " http://grafana.example.com/d/submission ",
+		CommandCenterURL:              "http://cc.example.com/ ",
+		HAProxyStatsURL:               " http://haproxy.example.com/stats;csv ",
 	}
 	got := normalizeConfig(cfg)
 	if got.Title != "Portal" {
@@ -155,6 +156,9 @@ func TestNormalizeConfig(t *testing.T) {
 	}
 	if got.PushGatewayURL != "http://push.example.com" {
 		t.Fatalf("unexpected push url: %q", got.PushGatewayURL)
+	}
+	if got.SubmissionManagerDashboardURL != "http://grafana.example.com/d/submission" {
+		t.Fatalf("unexpected submission manager dashboard url: %q", got.SubmissionManagerDashboardURL)
 	}
 	if got.CommandCenterURL != "http://cc.example.com" {
 		t.Fatalf("unexpected command center url: %q", got.CommandCenterURL)
@@ -208,11 +212,11 @@ func TestHandleOverviewHTMX(t *testing.T) {
 	req.Header.Set("HX-Request", "true")
 	rr := httptest.NewRecorder()
 	server.handleOverview(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rr.Code)
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected status 302, got %d", rr.Code)
 	}
-	if !strings.Contains(rr.Body.String(), "overview Admin") {
-		t.Fatalf("expected overview fragment, got %q", rr.Body.String())
+	if rr.Header().Get("Location") != "/command-center/ui" {
+		t.Fatalf("expected command center redirect, got %q", rr.Header().Get("Location"))
 	}
 }
 
@@ -246,10 +250,10 @@ func TestHandleHAProxyConfigured(t *testing.T) {
 	}
 }
 
-func TestProxyUIRewriteAndTroubleshootLabel(t *testing.T) {
+func TestProxyUIRewrite(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = io.WriteString(w, `<a href="/ui">home</a><div>Troubleshoot by ReferenceId</div>`)
+		_, _ = io.WriteString(w, `<a href="/ui">home</a>`)
 	}))
 	defer upstream.Close()
 	server := newTestPortalServer(t, fileConfig{SMSGatewayURL: upstream.URL})
@@ -263,12 +267,6 @@ func TestProxyUIRewriteAndTroubleshootLabel(t *testing.T) {
 	body := rr.Body.String()
 	if !strings.Contains(body, "/sms/ui") {
 		t.Fatalf("expected rewritten ui paths, got %q", body)
-	}
-	if strings.Contains(body, "Troubleshoot by ReferenceId") {
-		t.Fatalf("expected troubleshoot label rewritten, got %q", body)
-	}
-	if !strings.Contains(body, "Troubleshoot") {
-		t.Fatalf("expected troubleshooting label present, got %q", body)
 	}
 }
 
@@ -304,6 +302,9 @@ func newTestPortalServer(t *testing.T, cfg fileConfig) *portalServer {
 	overview := template.Must(template.New("portal_overview.tmpl").Parse(`{{define "portal_overview.tmpl"}}overview {{.Title}}{{end}}`))
 	haproxy := template.Must(template.New("portal_haproxy.tmpl").Parse(`{{define "portal_haproxy.tmpl"}}haproxy {{len .Frontends}} {{len .Backends}} {{.Error}}{{end}}`))
 	errView := template.Must(template.New("portal_error.tmpl").Parse(`{{define "portal_error.tmpl"}}error {{.Title}} {{.Message}}{{end}}`))
+	troubleshoot := template.Must(template.New("portal_troubleshoot.tmpl").Parse(`{{define "portal_troubleshoot.tmpl"}}troubleshoot {{.HistoryAction}}{{end}}`))
+	dashboards := template.Must(template.New("portal_dashboards.tmpl").Parse(`{{define "portal_dashboards.tmpl"}}dashboards {{.SubmissionURL}} {{.SMSGatewayURL}} {{.PushGatewayURL}}{{end}}`))
+	dashboardEmbed := template.Must(template.New("portal_dashboard_embed.tmpl").Parse(`{{define "portal_dashboard_embed.tmpl"}}dashboard {{.Title}} {{.DashboardURL}}{{end}}`))
 	submissionResult := template.Must(template.New("submission_result.tmpl").Parse(`{{define "submission_result.tmpl"}}submission {{.IntentID}} {{.StatusEndpoint}} {{.Status}} {{.RejectedReason}} {{.ExhaustedReason}} {{.CompletedAt}} {{.Error}}{{end}}`))
 	return &portalServer{
 		config: normalizeConfig(cfg),
@@ -312,6 +313,9 @@ func newTestPortalServer(t *testing.T, cfg fileConfig) *portalServer {
 			overview:         overview,
 			haproxy:          haproxy,
 			errView:          errView,
+			troubleshoot:     troubleshoot,
+			dashboards:       dashboards,
+			dashboardEmbed:   dashboardEmbed,
 			submissionResult: submissionResult,
 		},
 		client: &http.Client{},
@@ -346,15 +350,11 @@ func TestHandleOverviewFullPage(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/ui", nil)
 	rr := httptest.NewRecorder()
 	server.handleOverview(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rr.Code)
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d", rr.Code)
 	}
-	body := rr.Body.String()
-	if !strings.Contains(body, "<!doctype html>") {
-		t.Fatalf("expected full page, got %q", body)
-	}
-	if !strings.Contains(body, "topbar") {
-		t.Fatalf("expected topbar in shell, got %q", body)
+	if rr.Header().Get("Location") != "/command-center/ui" {
+		t.Fatalf("expected command center redirect, got %q", rr.Header().Get("Location"))
 	}
 }
 
@@ -374,6 +374,305 @@ func TestHandlePushUI(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "/push/ui") {
 		t.Fatalf("expected rewritten paths, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleSMSTroubleshootPage(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		SMSGatewayURL:        "http://sms",
+		SubmissionManagerURL: "http://manager",
+	})
+	req := httptest.NewRequest(http.MethodGet, "/sms/ui/troubleshoot", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleSMSTroubleshoot(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "/sms/ui/troubleshoot/history") {
+		t.Fatalf("expected history action, got %q", body)
+	}
+}
+
+func TestHandlePushTroubleshootPage(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		PushGatewayURL:       "http://push",
+		SubmissionManagerURL: "http://manager",
+	})
+	req := httptest.NewRequest(http.MethodGet, "/push/ui/troubleshoot", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handlePushTroubleshoot(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "/push/ui/troubleshoot/history") {
+		t.Fatalf("expected history action, got %q", body)
+	}
+}
+
+func TestHandleTroubleshootPage(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		SubmissionManagerURL: "http://manager",
+	})
+	req := httptest.NewRequest(http.MethodGet, "/troubleshoot", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleTroubleshoot(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "/troubleshoot/history") {
+		t.Fatalf("expected history action, got %q", body)
+	}
+}
+
+func TestHandleDashboardsPage(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		SMSGatewayURL:                 "http://sms",
+		PushGatewayURL:                "http://push",
+		SubmissionManagerDashboardURL: "http://grafana/submission-manager",
+	})
+	req := httptest.NewRequest(http.MethodGet, "/dashboards", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleDashboards(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "/dashboards/submission-manager") {
+		t.Fatalf("expected submission manager dashboard link, got %q", body)
+	}
+	if !strings.Contains(body, "/sms/ui/metrics") {
+		t.Fatalf("expected sms dashboard link, got %q", body)
+	}
+	if !strings.Contains(body, "/push/ui/metrics") {
+		t.Fatalf("expected push dashboard link, got %q", body)
+	}
+}
+
+func TestHandleSubmissionManagerDashboard(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		SubmissionManagerDashboardURL: "http://grafana/submission-manager",
+	})
+	req := httptest.NewRequest(http.MethodGet, "/dashboards/submission-manager", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleSubmissionManagerDashboard(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "http://grafana/submission-manager") {
+		t.Fatalf("expected dashboard url in response, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleSubmissionManagerDashboardNotConfigured(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{})
+	req := httptest.NewRequest(http.MethodGet, "/dashboards/submission-manager", nil)
+	rr := httptest.NewRecorder()
+	server.handleSubmissionManagerDashboard(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+}
+
+func TestHandleSMSTroubleshootHistoryProxy(t *testing.T) {
+	var seenIntent string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ui/history" {
+			t.Fatalf("expected /ui/history, got %q", r.URL.Path)
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("parse form: %v", err)
+		}
+		seenIntent = r.FormValue("intentId")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = io.WriteString(w, "history ok")
+	}))
+	defer upstream.Close()
+
+	server := newTestPortalServer(t, fileConfig{SubmissionManagerURL: upstream.URL})
+	body := strings.NewReader("intentId=abc-123")
+	req := httptest.NewRequest(http.MethodPost, "/sms/ui/troubleshoot/history", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleSMSTroubleshootHistory(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if seenIntent != "abc-123" {
+		t.Fatalf("expected intentId forwarded, got %q", seenIntent)
+	}
+	if !strings.Contains(rr.Body.String(), "history ok") {
+		t.Fatalf("expected upstream body, got %q", rr.Body.String())
+	}
+}
+
+func TestHandlePushTroubleshootHistoryProxy(t *testing.T) {
+	var seenIntent string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ui/history" {
+			t.Fatalf("expected /ui/history, got %q", r.URL.Path)
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("parse form: %v", err)
+		}
+		seenIntent = r.FormValue("intentId")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = io.WriteString(w, "history ok")
+	}))
+	defer upstream.Close()
+
+	server := newTestPortalServer(t, fileConfig{SubmissionManagerURL: upstream.URL})
+	body := strings.NewReader("intentId=abc-123")
+	req := httptest.NewRequest(http.MethodPost, "/push/ui/troubleshoot/history", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handlePushTroubleshootHistory(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if seenIntent != "abc-123" {
+		t.Fatalf("expected intentId forwarded, got %q", seenIntent)
+	}
+	if !strings.Contains(rr.Body.String(), "history ok") {
+		t.Fatalf("expected upstream body, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleTroubleshootHistoryProxy(t *testing.T) {
+	var seenIntent string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ui/history" {
+			t.Fatalf("expected /ui/history, got %q", r.URL.Path)
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("parse form: %v", err)
+		}
+		seenIntent = r.FormValue("intentId")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = io.WriteString(w, "history ok")
+	}))
+	defer upstream.Close()
+
+	server := newTestPortalServer(t, fileConfig{SubmissionManagerURL: upstream.URL})
+	body := strings.NewReader("intentId=abc-123")
+	req := httptest.NewRequest(http.MethodPost, "/troubleshoot/history", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleTroubleshootHistory(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if seenIntent != "abc-123" {
+		t.Fatalf("expected intentId forwarded, got %q", seenIntent)
+	}
+	if !strings.Contains(rr.Body.String(), "history ok") {
+		t.Fatalf("expected upstream body, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleTroubleshootHistoryProxyError(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "intent not found", http.StatusNotFound)
+	}))
+	defer upstream.Close()
+
+	server := newTestPortalServer(t, fileConfig{SubmissionManagerURL: upstream.URL})
+	body := strings.NewReader("intentId=missing")
+	req := httptest.NewRequest(http.MethodPost, "/troubleshoot/history", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleTroubleshootHistory(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "intent not found") {
+		t.Fatalf("expected error message, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleTroubleshootHistoryNotConfiguredHTMX(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{})
+	body := strings.NewReader("intentId=missing")
+	req := httptest.NewRequest(http.MethodPost, "/troubleshoot/history", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleTroubleshootHistory(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "SubmissionManager not configured") {
+		t.Fatalf("expected error message, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleTroubleshootHistoryNotConfiguredNonHTMX(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{})
+	body := strings.NewReader("intentId=missing")
+	req := httptest.NewRequest(http.MethodPost, "/troubleshoot/history", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	server.handleTroubleshootHistory(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "SubmissionManager not configured") {
+		t.Fatalf("expected error message, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleTroubleshootHistoryMissingIntent(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{SubmissionManagerURL: "http://manager"})
+	req := httptest.NewRequest(http.MethodPost, "/troubleshoot/history", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleTroubleshootHistory(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "intentId is required") {
+		t.Fatalf("expected error message, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleTroubleshootHistoryBadMethod(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{SubmissionManagerURL: "http://manager"})
+	req := httptest.NewRequest(http.MethodGet, "/troubleshoot/history", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleTroubleshootHistory(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "method not allowed") {
+		t.Fatalf("expected error message, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleTroubleshootHistoryBadBaseURL(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{SubmissionManagerURL: "http://[::1"})
+	body := strings.NewReader("intentId=abc-123")
+	req := httptest.NewRequest(http.MethodPost, "/troubleshoot/history", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleTroubleshootHistory(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "Invalid upstream URL") {
+		t.Fatalf("expected error message, got %q", rr.Body.String())
 	}
 }
 
@@ -796,13 +1095,16 @@ func TestLoadPortalTemplates(t *testing.T) {
 	write("portal_overview.tmpl", `{{define "portal_overview.tmpl"}}overview{{end}}`)
 	write("portal_haproxy.tmpl", `{{define "portal_haproxy.tmpl"}}haproxy{{end}}`)
 	write("portal_error.tmpl", `{{define "portal_error.tmpl"}}error{{end}}`)
+	write("portal_troubleshoot.tmpl", `{{define "portal_troubleshoot.tmpl"}}troubleshoot{{end}}`)
+	write("portal_dashboards.tmpl", `{{define "portal_dashboards.tmpl"}}dashboards{{end}}`)
+	write("portal_dashboard_embed.tmpl", `{{define "portal_dashboard_embed.tmpl"}}dashboard{{end}}`)
 	write("submission_result.tmpl", `{{define "submission_result.tmpl"}}submission{{end}}`)
 
 	templates, err := loadPortalTemplates(dir)
 	if err != nil {
 		t.Fatalf("loadPortalTemplates: %v", err)
 	}
-	if templates.topbar == nil || templates.overview == nil || templates.haproxy == nil || templates.errView == nil || templates.submissionResult == nil {
+	if templates.topbar == nil || templates.overview == nil || templates.haproxy == nil || templates.errView == nil || templates.troubleshoot == nil || templates.dashboards == nil || templates.dashboardEmbed == nil || templates.submissionResult == nil {
 		t.Fatal("expected templates to be loaded")
 	}
 }

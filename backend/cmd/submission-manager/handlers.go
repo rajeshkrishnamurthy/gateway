@@ -31,6 +31,20 @@ type intentResponse struct {
 	ExhaustedReason  string `json:"exhaustedReason,omitempty"`
 }
 
+type intentHistoryResponse struct {
+	Intent   intentResponse    `json:"intent"`
+	Attempts []attemptResponse `json:"attempts"`
+}
+
+type attemptResponse struct {
+	AttemptNumber int    `json:"attemptNumber"`
+	StartedAt     string `json:"startedAt,omitempty"`
+	FinishedAt    string `json:"finishedAt,omitempty"`
+	OutcomeStatus string `json:"outcomeStatus,omitempty"`
+	OutcomeReason string `json:"outcomeReason,omitempty"`
+	Error         string `json:"error,omitempty"`
+}
+
 type errorResponse struct {
 	Error errorBody `json:"error"`
 }
@@ -39,6 +53,39 @@ type errorBody struct {
 	Code    string            `json:"code"`
 	Message string            `json:"message"`
 	Details map[string]string `json:"details,omitempty"`
+}
+
+func handleMetrics(metrics *submissionmanager.Metrics) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if metrics == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		metrics.WritePrometheus(w)
+	}
+}
+
+func handleHealthz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
+}
+
+func handleReadyz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
 }
 
 func (s *apiServer) handleSubmit(w http.ResponseWriter, r *http.Request) {
@@ -99,9 +146,29 @@ func (s *apiServer) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	intentID := strings.TrimPrefix(r.URL.Path, "/v1/intents/")
-	intentID = strings.TrimSpace(intentID)
-	if intentID == "" || strings.Contains(intentID, "/") {
+	path := strings.TrimPrefix(r.URL.Path, "/v1/intents/")
+	path = strings.Trim(path, "/")
+	if path == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "intentId is required", nil)
+		return
+	}
+	parts := strings.Split(path, "/")
+	if len(parts) == 2 && parts[1] == "history" {
+		intentID := strings.TrimSpace(parts[0])
+		if intentID == "" {
+			writeError(w, http.StatusBadRequest, "invalid_request", "intentId is required", nil)
+			return
+		}
+		s.handleHistory(w, r, intentID)
+		return
+	}
+	if len(parts) != 1 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "intentId is required", nil)
+		return
+	}
+
+	intentID := strings.TrimSpace(parts[0])
+	if intentID == "" {
 		writeError(w, http.StatusBadRequest, "invalid_request", "intentId is required", nil)
 		return
 	}
@@ -113,6 +180,19 @@ func (s *apiServer) handleGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, toIntentResponse(intent))
+}
+
+func (s *apiServer) handleHistory(w http.ResponseWriter, r *http.Request, intentID string) {
+	intent, ok := s.manager.GetIntent(intentID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "not_found", "intent not found", map[string]string{"intentId": intentID})
+		return
+	}
+	response := intentHistoryResponse{
+		Intent:   toIntentResponse(intent),
+		Attempts: toAttemptResponses(intent.Attempts),
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func toIntentResponse(intent submissionmanager.Intent) intentResponse {
@@ -144,6 +224,28 @@ func toIntentResponse(intent submissionmanager.Intent) intentResponse {
 		RejectedReason:   rejectedReason,
 		ExhaustedReason:  exhaustedReason,
 	}
+}
+
+func toAttemptResponses(attempts []submissionmanager.Attempt) []attemptResponse {
+	out := make([]attemptResponse, 0, len(attempts))
+	for _, attempt := range attempts {
+		out = append(out, attemptResponse{
+			AttemptNumber: attempt.Number,
+			StartedAt:     formatAttemptTime(attempt.StartedAt),
+			FinishedAt:    formatAttemptTime(attempt.FinishedAt),
+			OutcomeStatus: attempt.GatewayOutcome.Status,
+			OutcomeReason: attempt.GatewayOutcome.Reason,
+			Error:         attempt.Error,
+		})
+	}
+	return out
+}
+
+func formatAttemptTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(timeFormat)
 }
 
 const timeFormat = time.RFC3339Nano

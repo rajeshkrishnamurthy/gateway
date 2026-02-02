@@ -5,6 +5,7 @@ This directory contains canonical, as-is specifications for backend behavior. Th
 ## Index
 
 - `submission-manager.md` - SubmissionIntent, submissionTarget contracts, and SubmissionManager semantics.
+- `submission-manager-metrics.md` - Prometheus metrics for SubmissionManager.
 - `vision.md` - Setu vision, goals, and scope.
 - `gateway-contracts.md` - SMS and push gateway contracts, HTTP endpoints, and submission-only behavior.
 - `gateway-metrics.md` - Prometheus metrics emitted by gateways and their meanings.

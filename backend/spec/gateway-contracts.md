@@ -140,13 +140,10 @@ Both gateways emit a decision log entry per submission attempt with:
 
 Provider adapter logging requirements are specified in `model-provider-adapter.md` and `backend/adapter/AGENTS.md`.
 
-## Troubleshooting UI
+## UI console
 
 The gateway UI console includes:
 
 - an overview page
 - a send test form
-- a troubleshooting view that filters in-memory logs by `referenceId`
 - a metrics view derived from Prometheus text output
-
-The log buffer is in-memory only and is reset on process restart.

@@ -161,6 +161,34 @@
       "toggleInstance": "sms-frontend"
     },
     {
+      "id": "submission-manager",
+      "label": "Submission Manager",
+      "startCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "up",
+        "-d",
+        "submission-manager"
+      ],
+      "stopCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "stop",
+        "submission-manager"
+      ],
+      "instances": [
+        {
+          "name": "submission-manager",
+          "addr": ":8082",
+          "healthUrl": "http://localhost:8082/readyz"
+        }
+      ]
+    },
+    {
       "id": "prometheus",
       "label": "Prometheus",
       "startCommand": [

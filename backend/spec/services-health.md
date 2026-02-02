@@ -60,5 +60,6 @@ The config viewer is read-only and only allows files under `conf/` relative to t
 
 ## UI behavior
 
-- The theme toggle is hidden when `embed=1` or `embed=true` is present in the query string.
+- The theme toggle and header navigation are hidden when `embed=1` or `embed=true` is present in the query string.
 - Status labels are `up` and `down`, with CSS classes `status-up` and `status-down`.
+- The console does not render direct interface links; the UI focuses on health and start/stop actions.

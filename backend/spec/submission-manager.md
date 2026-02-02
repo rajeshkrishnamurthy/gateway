@@ -26,7 +26,7 @@ submissionTarget is data-driven and selects a contract. It is the contract ident
 
 ### SubmissionManager
 
-SubmissionManager owns time and attempts. It executes the first attempt immediately, schedules retries only if the contract allows, and completes intents as ACCEPTED, REJECTED, or EXHAUSTED. It does not reinterpret gateway semantics and does not reason about delivery after acceptance.
+SubmissionManager owns time and attempts. It executes the first attempt immediately, schedules retries only if the contract allows, and completes intents as ACCEPTED, REJECTED, or EXHAUSTED. While execution is in progress, intents remain in PENDING. It does not reinterpret gateway semantics and does not reason about delivery after acceptance.
 
 #### Execution engine
 
@@ -37,6 +37,7 @@ Intent status is an orchestration outcome derived from gateway outcomes plus con
 - ACCEPTED: gateway outcome was accepted and, for deadline policy, the acceptance occurred before the acceptance deadline.
 - REJECTED: gateway outcome was rejected and the rejection reason is a terminalOutcome for the contract.
 - EXHAUSTED: policy termination was reached without acceptance or terminal rejection (deadline exceeded, max attempts reached, or one-shot completed).
+- PENDING: intent is still executing or waiting for the next attempt.
 
 Additional semantics:
 
@@ -74,12 +75,15 @@ SubmissionManager is exposed over HTTP as a thin adapter with no semantic change
 
 Endpoints:
 
+- GET `/healthz`, `/readyz` return `200 OK` when the process is running.
+- GET `/metrics` returns Prometheus metrics for SubmissionManager in text format. Metrics are prefixed with `submission_` and do not duplicate gateway metrics.
 - POST `/v1/intents` creates or queries an intent (idempotent). Request JSON:
   - intentId (string, required)
   - submissionTarget (string, required)
   - payload (opaque JSON, optional)
-  Response JSON includes intentId, submissionTarget, createdAt, status, completedAt (when terminal), rejectedReason (when rejected), and exhaustedReason (when exhausted).
+  Response JSON includes intentId, submissionTarget, createdAt, status, completedAt (when terminal), rejectedReason (when rejected), and exhaustedReason (when exhausted). Status values are: pending, accepted, rejected, exhausted.
 - GET `/v1/intents/{intentId}` returns the current intent state or 404 if unknown.
+- GET `/v1/intents/{intentId}/history` returns the current intent state plus the ordered attempt history. The response includes an `intent` object (same shape as `/v1/intents/{intentId}`) and an `attempts` array (attemptNumber, startedAt, finishedAt, outcomeStatus, outcomeReason, error).
 
 Error mapping:
 
@@ -87,6 +91,10 @@ Error mapping:
 - 404 not_found when an intentId does not exist.
 - 409 idempotency_conflict when the same intentId is reused with a different payload or submissionTarget.
 - 500 internal_error for unexpected failures.
+
+#### Intent history UI
+
+SubmissionManager exposes a history fragment endpoint at `/ui/history`. It accepts POST form data with `intentId` and returns an HTML fragment with the intent summary and attempts table. This view is authoritative because it is sourced from SQL persistence.
 
 ## SubmissionTarget Registry
 
@@ -100,11 +108,11 @@ Each registry entry defines:
 
 - submissionTarget: stable, unique target identifier
 - gatewayType: sms or push (code-known)
-- gatewayUrl: base URL for the HAProxy frontend for this gateway type
+- gatewayUrl: base URL for the HAProxy frontend for this gateway type (http/https with host)
 - policy: one of `deadline`, `max_attempts`, or `one_shot`
 - maxAcceptanceSeconds: required when policy is `deadline`
 - maxAttempts: required when policy is `max_attempts`
-- terminalOutcomes: gateway-reported outcomes that this contract treats as terminal
+- terminalOutcomes: required list of gateway-reported outcomes that this contract treats as terminal
 
 Notes:
 
@@ -113,6 +121,7 @@ Notes:
 - maxAcceptanceSeconds is a cumulative bound across all attempts, not a per-attempt timeout.
 - for deadline policy, a retry is scheduled only if the next due time is strictly before the acceptance deadline; otherwise the intent is exhausted.
 - fields not required by the selected policy must be omitted.
+- terminalOutcomes must not include empty values, must be unique, and must be valid for the gatewayType.
 - policy selects the retry termination rule:
   - `deadline`: retries are allowed until the acceptance deadline.
   - `max_attempts`: retries are allowed until the attempt count reaches maxAttempts.

@@ -28,7 +28,8 @@ func (s *portalServer) renderShell(w http.ResponseWriter, fragment []byte, activ
 		Active:            active,
 		ShowSMS:           s.config.SMSGatewayURL != "",
 		ShowPush:          s.config.PushGatewayURL != "",
-		ShowHAProxy:       s.config.HAProxyStatsURL != "",
+		ShowTroubleshoot:  s.config.SubmissionManagerURL != "",
+		ShowDashboards:    s.config.SubmissionManagerDashboardURL != "" || s.config.SMSGatewayURL != "" || s.config.PushGatewayURL != "",
 		ShowCommandCenter: s.config.CommandCenterURL != "",
 	})
 	if err != nil {

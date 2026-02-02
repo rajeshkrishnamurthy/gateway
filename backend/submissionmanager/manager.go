@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -90,6 +91,7 @@ type Manager struct {
 	queue   attemptQueue
 	wake    chan struct{}
 	nextSeq int
+	metrics *Metrics
 }
 
 // IdempotencyConflictError reports a conflicting submission for the same intentId.
@@ -158,6 +160,20 @@ func NewManager(reg submission.Registry, exec AttemptExecutor, clock Clock, db *
 	return manager, nil
 }
 
+// SetMetrics assigns a metrics registry to the manager.
+func (m *Manager) SetMetrics(metrics *Metrics) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.metrics = metrics
+	depth := len(m.queue.items)
+	m.mu.Unlock()
+	if metrics != nil {
+		metrics.SetQueueDepth(depth)
+	}
+}
+
 // Run executes scheduled attempts until the context is canceled.
 func (m *Manager) Run(ctx context.Context) {
 	if ctx == nil {
@@ -188,8 +204,11 @@ func (m *Manager) Run(ctx context.Context) {
 			// Pop under lock for queue consistency; execute outside the lock to avoid
 			// holding it across the external executor call.
 			heap.Pop(&m.queue)
+			if m.metrics != nil {
+				m.metrics.SetQueueDepth(len(m.queue.items))
+			}
 			m.mu.Unlock()
-			m.executeAttempt(ctx, next.intentID)
+			m.executeAttempt(ctx, next.intentID, next.due)
 			continue
 		}
 		m.mu.Unlock()
@@ -237,10 +256,21 @@ func (m *Manager) SubmitIntent(ctx context.Context, intent Intent) (Intent, erro
 
 	stored, inserted, err := m.store.insertIntent(ctx, newIntent, payloadHash(payload), createdAt)
 	if err != nil {
+		var conflict IdempotencyConflictError
+		if errors.As(err, &conflict) {
+			if m.metrics != nil {
+				m.metrics.ObserveIdempotencyConflict()
+			}
+		}
 		return Intent{}, err
 	}
 	if inserted {
+		if m.metrics != nil {
+			m.metrics.ObserveIntentCreated()
+		}
 		m.enqueueAttempt(intentID, createdAt)
+	} else if m.metrics != nil {
+		m.metrics.ObserveIdempotentHit()
 	}
 	return stored, nil
 }
@@ -271,24 +301,36 @@ func (m *Manager) enqueueAttemptLocked(intentID string, due time.Time) {
 		due:      due,
 		seq:      m.nextSeq,
 	})
+	if m.metrics != nil {
+		m.metrics.SetQueueDepth(len(m.queue.items))
+	}
 	select {
 	case m.wake <- struct{}{}:
 	default:
 	}
 }
 
-func (m *Manager) executeAttempt(ctx context.Context, intentID string) {
+func (m *Manager) executeAttempt(ctx context.Context, intentID string, due time.Time) {
 	start := m.clock.Now()
 
 	intent, attemptCount, ok, err := m.store.loadIntentForExecution(ctx, intentID, start)
 	if err != nil || !ok {
 		return
 	}
+	if m.metrics != nil {
+		m.metrics.ObserveQueueDelay(start.Sub(due))
+	}
+	log.Printf("intentId=%q attempt=%d gatewayType=%s action=start", intentID, attemptCount+1, intent.Contract.GatewayType)
 	if intent.Contract.Policy == submission.PolicyDeadline {
 		deadline := intent.CreatedAt.Add(time.Duration(intent.Contract.MaxAcceptanceSeconds) * time.Second)
 		// Policy vs outcome: do not execute attempts after the acceptance deadline.
 		if !start.Before(deadline) {
-			_, _ = m.store.markExhausted(ctx, intentID, "deadline_exceeded", start)
+			applied, _ := m.store.markExhausted(ctx, intentID, "deadline_exceeded", start)
+			if applied && m.metrics != nil {
+				m.metrics.ObserveIntentTerminal(IntentExhausted, start.Sub(intent.CreatedAt))
+				m.metrics.ObserveExhausted("deadline_exceeded")
+			}
+			log.Printf("intentId=%q status=%s exhaustedReason=%s", intentID, IntentExhausted, "deadline_exceeded")
 			return
 		}
 	}
@@ -296,6 +338,11 @@ func (m *Manager) executeAttempt(ctx context.Context, intentID string) {
 	attemptNumber := attemptCount + 1
 	contract := intent.Contract
 	payload := clonePayload(intent.Payload)
+
+	if m.metrics != nil {
+		m.metrics.IncInflight()
+		defer m.metrics.DecInflight()
+	}
 
 	outcome, err := m.exec(ctx, AttemptInput{
 		GatewayType: contract.GatewayType,
@@ -319,6 +366,11 @@ func (m *Manager) executeAttempt(ctx context.Context, intentID string) {
 	}
 
 	retry, due := m.evaluateAttempt(&intent, &attempt)
+	nextDue := ""
+	if retry {
+		nextDue = due.UTC().Format(time.RFC3339Nano)
+	}
+	log.Printf("intentId=%q attempt=%d outcomeStatus=%q outcomeReason=%q error=%q status=%s retry=%t nextDue=%s", intentID, attempt.Number, attempt.GatewayOutcome.Status, attempt.GatewayOutcome.Reason, attempt.Error, intent.Status, retry, nextDue)
 	var nextAttemptAt *time.Time
 	if retry {
 		nextAttemptAt = &due
@@ -326,6 +378,25 @@ func (m *Manager) executeAttempt(ctx context.Context, intentID string) {
 	applied, err := m.store.recordAttempt(ctx, intentID, attempt, intent.Status, intent.FinalOutcome, intent.ExhaustedReason, nextAttemptAt, finish)
 	if err != nil || !applied {
 		return
+	}
+	if m.metrics != nil {
+		m.metrics.ObserveAttemptDuration(finish.Sub(start))
+		if attempt.Error != "" {
+			m.metrics.ObserveAttemptOutcome("error")
+		} else if attempt.GatewayOutcome.Status != "" {
+			m.metrics.ObserveAttemptOutcome(attempt.GatewayOutcome.Status)
+		} else {
+			m.metrics.ObserveAttemptOutcome("error")
+		}
+		if retry {
+			m.metrics.ObserveRetryScheduled()
+		}
+		if intent.Status == IntentAccepted || intent.Status == IntentRejected || intent.Status == IntentExhausted {
+			m.metrics.ObserveIntentTerminal(intent.Status, finish.Sub(intent.CreatedAt))
+			if intent.Status == IntentExhausted {
+				m.metrics.ObserveExhausted(intent.ExhaustedReason)
+			}
+		}
 	}
 	if retry {
 		m.enqueueAttempt(intentID, due)

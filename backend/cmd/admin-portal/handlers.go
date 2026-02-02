@@ -25,14 +25,10 @@ func handleReadyz(w http.ResponseWriter, r *http.Request) {
 
 func (s *portalServer) handleOverview(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		s.renderError(w, r, http.StatusMethodNotAllowed, "Method not allowed", "method not allowed", navOverview)
+		s.renderError(w, r, http.StatusMethodNotAllowed, "Method not allowed", "method not allowed", navCommandCenter)
 		return
 	}
-	view := overviewView{
-		Title:    resolveTitle(s.config.Title),
-		Consoles: buildConsoleViews(s.config),
-	}
-	s.renderPage(w, r, s.templates.overview, "portal_overview.tmpl", view, navOverview)
+	http.Redirect(w, r, "/command-center/ui", http.StatusFound)
 }
 
 func (s *portalServer) handleHAProxy(w http.ResponseWriter, r *http.Request) {
@@ -70,11 +66,11 @@ func (s *portalServer) handleHAProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *portalServer) handleSMSUI(w http.ResponseWriter, r *http.Request) {
-	s.proxyUI(w, r, s.config.SMSGatewayURL, "/sms", navSMS, false)
+	s.proxyUI(w, r, s.config.SMSGatewayURL, "/sms", navSMS, true)
 }
 
 func (s *portalServer) handlePushUI(w http.ResponseWriter, r *http.Request) {
-	s.proxyUI(w, r, s.config.PushGatewayURL, "/push", navPush, false)
+	s.proxyUI(w, r, s.config.PushGatewayURL, "/push", navPush, true)
 }
 
 func (s *portalServer) handleCommandCenterUI(w http.ResponseWriter, r *http.Request) {

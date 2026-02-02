@@ -45,3 +45,7 @@ All metrics include a `provider` label that is set to the configured adapter pro
 Buckets are fixed for both histograms:
 
 - 0.1s, 0.25s, 0.5s, 1s, 2.5s, 5s
+
+## Grafana dashboards
+
+Gateway overview dashboards live in `backend/conf/grafana/dashboards` and visualize only gateway metrics.
