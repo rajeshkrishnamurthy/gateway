@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -150,8 +152,14 @@ func (s *portalServer) handleSMSSubmission(w http.ResponseWriter, r *http.Reques
 	req.To = strings.TrimSpace(req.To)
 	req.Message = strings.TrimSpace(req.Message)
 	req.TenantID = strings.TrimSpace(req.TenantID)
+	req.WaitSeconds = strings.TrimSpace(req.WaitSeconds)
 	if req.ReferenceID == "" || req.To == "" || req.Message == "" {
 		s.renderSubmissionFailure(w, r, http.StatusBadRequest, "referenceId, to, and message are required")
+		return
+	}
+	waitSeconds, err := parseWaitSeconds(req.WaitSeconds)
+	if err != nil {
+		s.renderSubmissionFailure(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -175,7 +183,7 @@ func (s *portalServer) handleSMSSubmission(w http.ResponseWriter, r *http.Reques
 		Payload:          payloadBytes,
 	}
 
-	status, body, contentType, err := s.submitIntent(r.Context(), intentReq)
+	status, body, contentType, err := s.submitIntent(r.Context(), intentReq, waitSeconds)
 	if err != nil {
 		s.renderSubmissionFailure(w, r, http.StatusBadGateway, err.Error())
 		return
@@ -237,8 +245,14 @@ func (s *portalServer) handlePushSubmission(w http.ResponseWriter, r *http.Reque
 	req.Title = strings.TrimSpace(req.Title)
 	req.Body = strings.TrimSpace(req.Body)
 	req.TenantID = strings.TrimSpace(req.TenantID)
+	req.WaitSeconds = strings.TrimSpace(req.WaitSeconds)
 	if req.ReferenceID == "" || req.Token == "" {
 		s.renderSubmissionFailure(w, r, http.StatusBadRequest, "referenceId and token are required")
+		return
+	}
+	waitSeconds, err := parseWaitSeconds(req.WaitSeconds)
+	if err != nil {
+		s.renderSubmissionFailure(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -267,7 +281,7 @@ func (s *portalServer) handlePushSubmission(w http.ResponseWriter, r *http.Reque
 		Payload:          payloadBytes,
 	}
 
-	status, body, contentType, err := s.submitIntent(r.Context(), intentReq)
+	status, body, contentType, err := s.submitIntent(r.Context(), intentReq, waitSeconds)
 	if err != nil {
 		s.renderSubmissionFailure(w, r, http.StatusBadGateway, err.Error())
 		return
@@ -307,8 +321,12 @@ func (s *portalServer) handlePushSubmission(w http.ResponseWriter, r *http.Reque
 	s.renderSubmissionResult(w, status, view)
 }
 
-func (s *portalServer) submitIntent(ctx context.Context, intent submissionIntentRequest) (int, []byte, string, error) {
-	targetURL, err := buildTargetURL(s.config.SubmissionManagerURL, "/v1/intents", "", false)
+func (s *portalServer) submitIntent(ctx context.Context, intent submissionIntentRequest, waitSeconds string) (int, []byte, string, error) {
+	query := url.Values{}
+	if waitSeconds != "" {
+		query.Set("waitSeconds", waitSeconds)
+	}
+	targetURL, err := buildTargetURL(s.config.SubmissionManagerURL, "/v1/intents", query.Encode(), false)
 	if err != nil {
 		return 0, nil, "", err
 	}
@@ -333,6 +351,17 @@ func (s *portalServer) submitIntent(ctx context.Context, intent submissionIntent
 		return 0, nil, "", err
 	}
 	return resp.StatusCode, respBody, resp.Header.Get("Content-Type"), nil
+}
+
+func parseWaitSeconds(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	seconds, err := strconv.Atoi(value)
+	if err != nil || seconds < 0 {
+		return "", errors.New("waitSeconds must be a non-negative integer")
+	}
+	return strconv.Itoa(seconds), nil
 }
 
 func (s *portalServer) fetchIntent(ctx context.Context, intentID string) (int, []byte, string, error) {

@@ -53,6 +53,7 @@ If a URL is empty, its navigation entry is hidden. HAProxy has no top-nav entry;
 - `/sms/status?intentId=...` queries SubmissionManager for the current intent status when configured.
 - `/push/send` submits to SubmissionManager when `submissionManagerUrl` and `pushSubmissionTarget` are set; otherwise it proxies to the push gateway.
 - `/push/status?intentId=...` queries SubmissionManager for the current intent status when configured.
+- When routing to SubmissionManager, the portal forwards an optional `waitSeconds` form value as the `waitSeconds` query parameter on `POST /v1/intents`.
 - HAProxy status is rendered from CSV, not from the HTML stats page.
 - The Troubleshoot page includes an intent history panel backed by SubmissionManager persistence.
 

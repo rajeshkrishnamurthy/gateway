@@ -694,6 +694,9 @@ func TestHandleSMSAPISubmissionManager(t *testing.T) {
 		if r.URL.Path != "/v1/intents" {
 			t.Fatalf("expected path /v1/intents, got %q", r.URL.Path)
 		}
+		if r.URL.RawQuery != "waitSeconds=5" {
+			t.Fatalf("expected waitSeconds=5, got %q", r.URL.RawQuery)
+		}
 		if r.Method != http.MethodPost {
 			t.Fatalf("expected POST, got %q", r.Method)
 		}
@@ -711,7 +714,7 @@ func TestHandleSMSAPISubmissionManager(t *testing.T) {
 		SMSSubmissionTarget:  "sms.realtime",
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader(`{"referenceId":"intent-1","to":"+1","message":"hello","tenantId":"tenant-a"}`))
+	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader(`{"referenceId":"intent-1","to":"+1","message":"hello","tenantId":"tenant-a","waitSeconds":"5"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("HX-Request", "true")
 	rr := httptest.NewRecorder()
@@ -735,6 +738,23 @@ func TestHandleSMSAPISubmissionManager(t *testing.T) {
 	}
 	if payload["referenceId"] != "intent-1" || payload["to"] != "+1" || payload["message"] != "hello" || payload["tenantId"] != "tenant-a" {
 		t.Fatalf("unexpected payload: %+v", payload)
+	}
+}
+
+func TestHandleSMSSubmissionInvalidWaitSeconds(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		SubmissionManagerURL: "http://sm",
+		SMSSubmissionTarget:  "sms.realtime",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/sms/send", strings.NewReader(`{"referenceId":"intent-1","to":"+1","message":"hello","waitSeconds":"nope"}`))
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleSMSAPI(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "waitSeconds must be a non-negative integer") {
+		t.Fatalf("expected waitSeconds error, got %q", rr.Body.String())
 	}
 }
 
@@ -778,6 +798,9 @@ func TestHandlePushAPISubmissionManager(t *testing.T) {
 		if r.URL.Path != "/v1/intents" {
 			t.Fatalf("expected path /v1/intents, got %q", r.URL.Path)
 		}
+		if r.URL.RawQuery != "waitSeconds=3" {
+			t.Fatalf("expected waitSeconds=3, got %q", r.URL.RawQuery)
+		}
 		if r.Method != http.MethodPost {
 			t.Fatalf("expected POST, got %q", r.Method)
 		}
@@ -795,7 +818,7 @@ func TestHandlePushAPISubmissionManager(t *testing.T) {
 		PushSubmissionTarget: "push.realtime",
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/push/send", strings.NewReader(`{"referenceId":"intent-1","token":"abc","title":"hi","body":"there","tenantId":"tenant-a"}`))
+	req := httptest.NewRequest(http.MethodPost, "/push/send", strings.NewReader(`{"referenceId":"intent-1","token":"abc","title":"hi","body":"there","tenantId":"tenant-a","waitSeconds":"3"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("HX-Request", "true")
 	rr := httptest.NewRecorder()

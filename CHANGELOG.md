@@ -4,7 +4,7 @@ This changelog records user-visible feature additions. History tracking starts o
 
 ## Unreleased
 
-- None.
+- Added optional waitSeconds input on Test SMS and Test Push forms to forward sync wait requests to SubmissionManager.
 
 ## 2026-02-02
 

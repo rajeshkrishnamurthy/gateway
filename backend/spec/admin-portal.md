@@ -51,6 +51,7 @@ Empty URLs hide the corresponding navigation entry. HAProxy has no top-nav entry
 - When proxying the SMS and push gateway UIs, `embed=1` is added so their internal navigation is hidden inside the portal.
 - `/sms/send` is routed to SubmissionManager when `submissionManagerUrl` and `smsSubmissionTarget` are set; otherwise it proxies to the SMS gateway.
 - `/push/send` is routed to SubmissionManager when `submissionManagerUrl` and `pushSubmissionTarget` are set; otherwise it proxies to the push gateway.
+- When routing to SubmissionManager, the portal forwards an optional `waitSeconds` form value as the `waitSeconds` query parameter on `POST /v1/intents`.
 - The portal exposes a troubleshoot page with intent history sourced from SubmissionManager persistence.
 
 ## HAProxy view

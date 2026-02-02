@@ -79,6 +79,7 @@ type smsTestRequest struct {
 	To          string `json:"to"`
 	Message     string `json:"message"`
 	TenantID    string `json:"tenantId"`
+	WaitSeconds string `json:"waitSeconds"`
 }
 
 type pushTestRequest struct {
@@ -87,6 +88,7 @@ type pushTestRequest struct {
 	Title       string `json:"title"`
 	Body        string `json:"body"`
 	TenantID    string `json:"tenantId"`
+	WaitSeconds string `json:"waitSeconds"`
 }
 
 type topbarView struct {

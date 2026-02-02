@@ -43,6 +43,14 @@
         <input id="tenantId" name="tenantId" type="text" />
         <small>for correlation only</small>
       </div>
+      <details class="wait-disclosure">
+        <summary>Wait for result (optional)</summary>
+        <div class="field">
+          <label for="waitSeconds">waitSeconds</label>
+          <input id="waitSeconds" name="waitSeconds" type="number" min="0" step="1" inputmode="numeric" />
+          <small>SubmissionManager waits up to this many seconds for a terminal or first-attempt result.</small>
+        </div>
+      </details>
       <div class="actions">
         <button class="button" type="submit">Submit request</button>
       </div>
