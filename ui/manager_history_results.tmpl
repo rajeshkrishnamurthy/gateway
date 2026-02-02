@@ -1,0 +1,74 @@
+<div class="table-section">
+  <div class="summary-grid-head">
+    <h3 class="section-title">Intent summary</h3>
+    <h3 class="section-title">Lifecycle</h3>
+  </div>
+  <dl class="kv kv-2col">
+    <div class="kv-row">
+      <dt>Intent ID</dt>
+      <dd>{{if .IntentID}}{{.IntentID}}{{else}}-{{end}}</dd>
+      <dt>Created at</dt>
+      <dd>{{if .CreatedAt}}{{.CreatedAt}}{{else}}-{{end}}</dd>
+    </div>
+    <div class="kv-row">
+      <dt>Submission target</dt>
+      <dd>{{if .SubmissionTarget}}{{.SubmissionTarget}}{{else}}-{{end}}</dd>
+      <dt>Completed at</dt>
+      <dd>{{if .CompletedAt}}{{.CompletedAt}}{{else}}-{{end}}</dd>
+    </div>
+    <div class="kv-row">
+      <dt>Status</dt>
+      <dd><span class="status status-{{.Status}}">{{.Status}}</span></dd>
+      <dt>Rejected reason</dt>
+      <dd>{{if .RejectedReason}}{{.RejectedReason}}{{else}}-{{end}}</dd>
+    </div>
+    <div class="kv-row">
+      <dt>Attempts</dt>
+      <dd>{{len .Attempts}}</dd>
+      <dt>Exhausted reason</dt>
+      <dd>{{if .ExhaustedReason}}{{.ExhaustedReason}}{{else}}-{{end}}</dd>
+    </div>
+  </dl>
+</div>
+
+<div class="section-divider" aria-hidden="true"></div>
+
+<div class="table-section">
+  <h3 class="section-title">Attempts</h3>
+  <table class="table table-compact table-striped">
+    <thead>
+      <tr>
+        <th>Attempt</th>
+        <th>Started</th>
+        <th>Finished</th>
+        <th>Outcome</th>
+        <th>Reason</th>
+        <th>Error</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{if .Attempts}}
+      {{range .Attempts}}
+      <tr>
+        <td>{{.Number}}</td>
+        <td>{{if .StartedAt}}{{.StartedAt}}{{else}}-{{end}}</td>
+        <td>{{if .FinishedAt}}{{.FinishedAt}}{{else}}-{{end}}</td>
+        <td>
+          {{if .OutcomeStatus}}
+          <span class="status status-{{.OutcomeStatus}}">{{.OutcomeStatus}}</span>
+          {{else}}
+          <span class="muted">-</span>
+          {{end}}
+        </td>
+        <td>{{if .OutcomeReason}}{{.OutcomeReason}}{{else}}-{{end}}</td>
+        <td>{{if .Error}}<span class="mono">{{.Error}}</span>{{else}}-{{end}}</td>
+      </tr>
+      {{end}}
+      {{else}}
+      <tr>
+        <td colspan="6"><p class="muted">No attempts recorded.</p></td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>

@@ -8,18 +8,20 @@
     <span class="topbar-title">Setu</span>
   </div>
   <nav class="nav portal-nav" aria-label="Admin portal">
-    <a class="{{if eq .Active "overview"}}is-active{{end}}" href="/ui">Portal</a>
-    {{if .ShowSMS}}
-    <a class="{{if eq .Active "sms"}}is-active{{end}}" href="/sms/ui">SMS Gateway</a>
-    {{end}}
-    {{if .ShowPush}}
-    <a class="{{if eq .Active "push"}}is-active{{end}}" href="/push/ui">Push Gateway</a>
-    {{end}}
-    {{if .ShowHAProxy}}
-    <a class="{{if eq .Active "haproxy"}}is-active{{end}}" href="/haproxy">HAProxy</a>
-    {{end}}
     {{if .ShowCommandCenter}}
     <a class="{{if eq .Active "command-center"}}is-active{{end}}" href="/command-center/ui">Command Center</a>
+    {{end}}
+    {{if .ShowSMS}}
+    <a class="{{if eq .Active "sms"}}is-active{{end}}" href="/sms/ui/send">Test SMS</a>
+    {{end}}
+    {{if .ShowPush}}
+    <a class="{{if eq .Active "push"}}is-active{{end}}" href="/push/ui/send">Test Push</a>
+    {{end}}
+    {{if .ShowDashboards}}
+    <a class="{{if eq .Active "dashboards"}}is-active{{end}}" href="/dashboards">Dashboards</a>
+    {{end}}
+    {{if .ShowTroubleshoot}}
+    <a class="{{if eq .Active "troubleshoot"}}is-active{{end}}" href="/troubleshoot">Troubleshoot</a>
     {{end}}
     <button id="theme-toggle" class="toggle theme-toggle is-off" type="button" role="switch" aria-checked="false">Light</button>
   </nav>

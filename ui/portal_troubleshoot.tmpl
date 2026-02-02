@@ -1,0 +1,32 @@
+<main class="page">
+  <header class="page-header">
+    <div class="brand">
+      <h1>Troubleshoot</h1>
+      <p>View the persisted intent history and attempt details.</p>
+    </div>
+  </header>
+
+  <section class="panel">
+    <h2>Intent history</h2>
+    {{if .HistoryEnabled}}
+    <form class="form-grid" method="post" action="{{.HistoryAction}}" hx-post="{{.HistoryAction}}" hx-target="#history-results" hx-swap="innerHTML">
+      <div class="field">
+        <label for="history-intentId">Intent ID</label>
+        <input id="history-intentId" name="intentId" type="text" required />
+      </div>
+      <div class="actions">
+        <button class="button" type="submit">View history</button>
+      </div>
+    </form>
+    {{else}}
+    <p class="muted">SubmissionManager is not configured.</p>
+    {{end}}
+    <div id="history-results">
+      <p class="muted">Enter an intentId to view intent status and attempts.</p>
+    </div>
+  </section>
+
+  <section class="note">
+    This page shows persisted intent history only.
+  </section>
+</main>

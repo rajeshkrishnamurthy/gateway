@@ -1,0 +1,105 @@
+<main class="page">
+  <header class="page-header">
+    <div class="brand">
+      <h1>Dashboards</h1>
+      <p>Grafana dashboards for gateway activity and SubmissionManager orchestration.</p>
+    </div>
+  </header>
+
+  <section class="panel">
+    <div class="dashboard-list">
+      {{if .SubmissionURL}}
+      <a class="dashboard-item" href="{{.SubmissionURL}}" aria-label="Open Submission Manager dashboard">
+        <span class="dashboard-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M4 16h3l2-4 3 6 3-9 2 5h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <div class="dashboard-body">
+          <div class="dashboard-title">Submission Manager</div>
+          <div class="dashboard-meta">Orchestration overview</div>
+        </div>
+        <span class="dashboard-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+      </a>
+      {{else}}
+      <div class="dashboard-item is-disabled">
+        <span class="dashboard-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M4 16h3l2-4 3 6 3-9 2 5h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <div class="dashboard-body">
+          <div class="dashboard-title">Submission Manager</div>
+          <div class="dashboard-meta muted">Not configured</div>
+        </div>
+      </div>
+      {{end}}
+      {{if .SMSGatewayURL}}
+      <a class="dashboard-item" href="{{.SMSGatewayURL}}" aria-label="Open SMS Gateway dashboard">
+        <span class="dashboard-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M5 7h14v10H9l-4 4V7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <div class="dashboard-body">
+          <div class="dashboard-title">SMS Gateway</div>
+          <div class="dashboard-meta">Gateway activity</div>
+        </div>
+        <span class="dashboard-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+      </a>
+      {{else}}
+      <div class="dashboard-item is-disabled">
+        <span class="dashboard-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M5 7h14v10H9l-4 4V7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <div class="dashboard-body">
+          <div class="dashboard-title">SMS Gateway</div>
+          <div class="dashboard-meta muted">Not configured</div>
+        </div>
+      </div>
+      {{end}}
+      {{if .PushGatewayURL}}
+      <a class="dashboard-item" href="{{.PushGatewayURL}}" aria-label="Open Push Gateway dashboard">
+        <span class="dashboard-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 3a6 6 0 0 1 6 6v2l2 3H4l2-3V9a6 6 0 0 1 6-6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M9 19a3 3 0 0 0 6 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <div class="dashboard-body">
+          <div class="dashboard-title">Push Gateway</div>
+          <div class="dashboard-meta">Gateway activity</div>
+        </div>
+        <span class="dashboard-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+      </a>
+      {{else}}
+      <div class="dashboard-item is-disabled">
+        <span class="dashboard-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 3a6 6 0 0 1 6 6v2l2 3H4l2-3V9a6 6 0 0 1 6-6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M9 19a3 3 0 0 0 6 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <div class="dashboard-body">
+          <div class="dashboard-title">Push Gateway</div>
+          <div class="dashboard-meta muted">Not configured</div>
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </section>
+</main>

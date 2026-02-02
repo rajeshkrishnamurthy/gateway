@@ -12,12 +12,12 @@ You can see it working by opening the SMS or Push console in the admin portal, c
 
 ## Progress
 
-- [ ] (2026-01-30) Read current admin portal + submission-manager UI routing and log buffer patterns; confirm templates and routes to extend.
-- [ ] Implement SubmissionManager log buffer + troubleshoot UI endpoint with intentId filtering.
-- [ ] Implement admin portal combined troubleshoot page and proxy handlers for manager/gateway log panels.
-- [ ] Update specs and portal docs to reflect new troubleshoot flow and in-memory log scope.
-- [ ] Add tests for new handlers and troubleshoot flow; run relevant test commands.
-- [ ] Validate end-to-end with docker compose and document expected behavior.
+- [x] (2026-01-30 16:35Z) Read current admin portal + submission-manager UI routing and log buffer patterns; confirm templates and routes to extend.
+- [x] (2026-01-30 16:55Z) Implement SubmissionManager log buffer + troubleshoot UI endpoint with intentId filtering.
+- [x] (2026-01-30 17:15Z) Implement admin portal combined troubleshoot page and proxy handlers for manager/gateway log panels.
+- [x] (2026-01-30 17:25Z) Update specs and portal docs to reflect new troubleshoot flow and in-memory log scope.
+- [x] (2026-01-30 18:05Z) Add tests for new handlers and troubleshoot flow; ran cmd/admin-portal and cmd/submission-manager tests.
+- [ ] (2026-01-30) Validate end-to-end with docker compose and document expected behavior.
 
 ## Surprises & Discoveries
 
@@ -33,9 +33,13 @@ You can see it working by opening the SMS or Push console in the admin portal, c
   Rationale: Keeps the admin portal a thin proxy, avoids new JSON adapters, and matches existing gateway UI patterns.
   Date/Author: 2026-01-30 / Codex
 
+- Decision: The SubmissionManager troubleshoot UI always renders HTML fragments (no standalone HTML shell).
+  Rationale: The admin portal is the primary consumer, and fragments keep the implementation minimal without extra static asset serving.
+  Date/Author: 2026-01-30 / Codex
+
 ## Outcomes & Retrospective
 
-- Pending.
+Completed the combined troubleshoot page with log panels, then later removed all front-end log panels due to load-balancing limitations. The authoritative intent history panel now lives in `plans/intent-history-execplan.md`.
 
 ## Context and Orientation
 
@@ -135,7 +139,7 @@ Add tests to verify the new handlers and the proxy behavior. Keep tests boring a
    - In `backend/cmd/submission-manager/main_test.go`, add tests that:
 
      - `POST /ui/troubleshoot` returns a fragment when intentId is supplied and the log buffer has a matching line.
-     - Missing intentId yields a 400 with an HTML error fragment.
+     - Missing intentId yields a 400 response.
 
 5. Run tests and validate end-to-end.
 
@@ -178,6 +182,14 @@ Expected troubleshooting form structure (HTML fragment example):
     </form>
   </section>
 
+Test output (abbreviated):
+
+  $ (cd backend && go test ./cmd/admin-portal -count=1)
+  ok  	gateway/cmd/admin-portal	0.505s
+
+  $ (cd backend && go test ./cmd/submission-manager -count=1)
+  ok  	gateway/cmd/submission-manager	2.336s
+
 ## Interfaces and Dependencies
 
 SubmissionManager (new UI endpoints):
@@ -196,3 +208,5 @@ Dependencies:
 - Use only Go standard library. No new third-party dependencies.
 - Reuse the shared `ui/` templates and CSS.
 - Treat SubmissionManager and gateways as upstream services; the admin portal must not interpret or merge their log output.
+
+Plan update note: Marked core implementation and test steps complete, documented the fragment-only UI decision, aligned the missing intentId expectation with the 400 response, and added abbreviated test transcripts.

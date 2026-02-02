@@ -3,10 +3,9 @@
     <div class="brand">
       <h1>{{.Title}}</h1>
     </div>
-    {{template "nav.tmpl" .}}
   </header>
 
   <section class="panel">
-    <iframe class="grafana-frame" src="{{.MetricsURL}}" title="{{.Title}}" loading="lazy"></iframe>
+    <iframe class="grafana-frame" src="{{.DashboardURL}}" title="{{.Title}}" loading="lazy"></iframe>
   </section>
 </main>
