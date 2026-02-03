@@ -11,7 +11,7 @@ After this change, the repository has a formal SubmissionTarget registry that bi
 ## Progress
 
 - [x] (2026-01-27 19:00Z) Review gateway contracts, config loaders, and ExecPlan conventions to align the Phase 1 registry design with existing patterns.
-- [x] (2026-01-27 20:15Z) Define the SubmissionTarget contract schema and document it in `backend/spec/submission-manager.md`.
+- [x] (2026-01-27 20:15Z) Define the SubmissionTarget contract schema and document it in `specs/submission-manager.md`.
 - [x] (2026-01-27 20:20Z) Add a sample registry config under `backend/conf/submission/submission_targets.json`.
 - [x] (2026-01-27 20:45Z) Implement `gateway/submission` registry loader and validator with explicit gateway type binding.
 - [x] (2026-01-27 20:50Z) Add unit tests for registry parsing and validation, and update docs to point at the new registry.
@@ -74,11 +74,11 @@ Phase 1 does not add any HTTP handlers or runtime services. It introduces a regi
 
 ## Plan of Work
 
-Create a new spec file under `backend/spec/` that defines SubmissionIntent, submissionTarget, gatewayType, contract fields, and the acceptance window semantics. The spec should include the known gateway outcome reasons for SMS and push and explain that the registry provides the explicit submissionTarget to gatewayType binding. The spec must also clarify that terminalOutcomes are gateway-reported outcomes that this contract treats as terminal, and that maxAcceptanceSeconds is a cumulative wall-clock bound across all attempts when policy is `deadline`. Add a sample registry config under `backend/conf/submission/` with at least one SMS and one push target that point at HAProxy frontends. Implement a small `gateway/submission` package that loads the registry from JSON with full-line `#` comment stripping, disallows unknown fields, and validates all contract invariants. Validation should enforce non-empty target names, known gateway types, valid routing URLs, policy-specific required fields, and terminal outcomes that are part of the gateway's known reason set. The package should provide a lookup method that returns a contract for a given submissionTarget without mutating or normalizing the input beyond trimming whitespace.
+Create a new spec file under `specs/` that defines SubmissionIntent, submissionTarget, gatewayType, contract fields, and the acceptance window semantics. The spec should include the known gateway outcome reasons for SMS and push and explain that the registry provides the explicit submissionTarget to gatewayType binding. The spec must also clarify that terminalOutcomes are gateway-reported outcomes that this contract treats as terminal, and that maxAcceptanceSeconds is a cumulative wall-clock bound across all attempts when policy is `deadline`. Add a sample registry config under `backend/conf/submission/` with at least one SMS and one push target that point at HAProxy frontends. Implement a small `gateway/submission` package that loads the registry from JSON with full-line `#` comment stripping, disallows unknown fields, and validates all contract invariants. Validation should enforce non-empty target names, known gateway types, valid routing URLs, policy-specific required fields, and terminal outcomes that are part of the gateway's known reason set. The package should provide a lookup method that returns a contract for a given submissionTarget without mutating or normalizing the input beyond trimming whitespace.
 
 ## Concrete Steps
 
-Step 1: Add `backend/spec/submission-manager.md` documenting the SubmissionTarget registry schema, the gateway outcome taxonomies, and the acceptance window semantics (cumulative wall-clock deadline from intent creation across all attempts). Include explicit definitions separating gatewayType (protocol + response semantics), submissionTarget (data-driven contract constraints), and SubmissionManager (time and attempts only).
+Step 1: Add `specs/submission-manager.md` documenting the SubmissionTarget registry schema, the gateway outcome taxonomies, and the acceptance window semantics (cumulative wall-clock deadline from intent creation across all attempts). Include explicit definitions separating gatewayType (protocol + response semantics), submissionTarget (data-driven contract constraints), and SubmissionManager (time and attempts only).
 
 Step 2: Add `backend/conf/submission/submission_targets.json` with a minimal set of targets (at least one SMS and one push) and clear, stable naming.
 

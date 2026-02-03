@@ -82,8 +82,8 @@ Ensure these handlers validate intentId and SubmissionManager URL and use `rende
 
 Update:
 
-- `backend/spec/submission-manager.md` to document `/v1/intents/{id}/history` (JSON) and `/ui/history` (HTML fragment), plus ordering and semantics (attempts ordered ascending; authoritative; no payload/contract snapshot).
-- `backend/spec/admin-portal.md` to describe the new “Intent history” panel and endpoints.
+- `specs/submission-manager.md` to document `/v1/intents/{id}/history` (JSON) and `/ui/history` (HTML fragment), plus ordering and semantics (attempts ordered ascending; authoritative; no payload/contract snapshot).
+- `specs/admin-portal.md` to describe the new “Intent history” panel and endpoints.
 - If necessary, `backend/cmd/admin-portal/README.md` to mention the history panel in the Troubleshoot flow.
 
 4) Tests.

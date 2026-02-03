@@ -65,7 +65,7 @@ Then add an admin portal troubleshoot page that is served from `/sms/ui/troubles
 
 Update admin portal routes so the combined troubleshoot page overrides the proxied gateway troubleshoot route. This must not merge log streams or interpret upstream responses. The portal should only proxy and display fragments.
 
-Update `backend/spec/admin-portal.md` to describe the new troubleshoot entry points and the two-panel flow. Update `backend/spec/submission-manager.md` to document the troubleshoot endpoint and the fact that logs are in-memory only.
+Update `specs/admin-portal.md` to describe the new troubleshoot entry points and the two-panel flow. Update `specs/submission-manager.md` to document the troubleshoot endpoint and the fact that logs are in-memory only.
 
 Add tests to verify the new handlers and the proxy behavior. Keep tests boring and behavior-driven.
 
@@ -122,9 +122,9 @@ Add tests to verify the new handlers and the proxy behavior. Keep tests boring a
 
 3. Update specs and docs.
 
-   - In `backend/spec/admin-portal.md`, add the new troubleshoot endpoints and describe the two-panel log view, with the note that it proxies upstream logs and does not merge them.
+   - In `specs/admin-portal.md`, add the new troubleshoot endpoints and describe the two-panel log view, with the note that it proxies upstream logs and does not merge them.
 
-   - In `backend/spec/submission-manager.md`, add a short section describing `/ui/troubleshoot`, the intentId filter, and that the log buffer is in-memory and best-effort.
+   - In `specs/submission-manager.md`, add a short section describing `/ui/troubleshoot`, the intentId filter, and that the log buffer is in-memory and best-effort.
 
    - If any README mentions troubleshooting routes, update accordingly.
 

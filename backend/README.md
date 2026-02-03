@@ -13,7 +13,7 @@ Prefer explicit, minimal changes that preserve the current submission-only contr
 
 Phase 1 defines the SubmissionTarget registry and contract validation only (no execution engine yet).
 
-- `backend/spec/submission-manager.md` defines SubmissionIntent, gatewayType, submissionTarget, and contract semantics.
+- `specs/submission-manager.md` defines SubmissionIntent, gatewayType, submissionTarget, and contract semantics.
 - `backend/conf/submission/submission_targets.json` is the sample registry for SubmissionManager.
 - `backend/submission/README.md` describes the registry loader behavior.
 

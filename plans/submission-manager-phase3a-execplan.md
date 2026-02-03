@@ -64,7 +64,7 @@ Key files:
 
 - `backend/submissionmanager/manager.go` — current in-memory engine, queues, policy evaluation.
 - `backend/submission/registry.go` — contract lookup and validation.
-- `backend/spec/submission-manager.md` — canonical semantics and Phase 2 behavior.
+- `specs/submission-manager.md` — canonical semantics and Phase 2 behavior.
 - `backend/README.md` and `README.md` — local SQL Server connection info.
 
 ## Plan of Work
@@ -93,7 +93,7 @@ Introduce a SQL-backed store for intent and attempt state, and move the scheduli
    - Submit an intent, restart manager (recreate), and confirm state is retained
    - Verify idempotency conflict and retry behavior with persisted attempts
 
-6) Update `backend/spec/submission-manager.md` with persistence semantics, and update `backend/spec/README.md` or `backend/README.md` for the SQL Server setup and schema location.
+6) Update `specs/submission-manager.md` with persistence semantics, and update `specs/README.md` or `backend/README.md` for the SQL Server setup and schema location.
 
 ## Validation and Acceptance
 

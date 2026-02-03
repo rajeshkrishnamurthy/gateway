@@ -11,4 +11,4 @@ Key points:
 - Intent state (including attempts and nextAttemptAt) is persisted in SQL Server; the in-memory queue is rebuilt on startup.
 - SQL schema lives in `backend/conf/sql/submissionmanager`.
 
-See `backend/spec/submission-manager.md` for domain semantics and `backend/submission/README.md` for registry rules.
+See `specs/submission-manager.md` for domain semantics and `backend/submission/README.md` for registry rules.

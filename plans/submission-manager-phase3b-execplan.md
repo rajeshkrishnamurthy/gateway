@@ -56,7 +56,7 @@ Key files and roles:
 - `backend/submission/registry.go` loads and validates SubmissionTarget contracts.
 - `backend/conf/submission/submission_targets.json` is the registry config to load.
 - `backend/cmd/` is where HTTP servers are defined; route registration and handlers must live in `main.go` for the new command.
-- `backend/spec/submission-manager.md` is the canonical semantics and must be updated for the HTTP surface.
+- `specs/submission-manager.md` is the canonical semantics and must be updated for the HTTP surface.
 
 Important terms:
 
@@ -77,7 +77,7 @@ Tests will be added with `net/http/httptest` to validate submit/query behavior, 
 
 Work from the repository root unless noted. The steps below are written so they can be performed in order with minimal guesswork.
 
-1) Read `backend/spec/submission-manager.md` and `backend/submissionmanager/README.md` to confirm the exact Intent/Attempt fields and status semantics. Record the HTTP request/response shapes in this ExecPlan as the authoritative mapping.
+1) Read `specs/submission-manager.md` and `backend/submissionmanager/README.md` to confirm the exact Intent/Attempt fields and status semantics. Record the HTTP request/response shapes in this ExecPlan as the authoritative mapping.
 
 2) Add `backend/cmd/submission-manager/main.go` that does the following:
    - Parse configuration (address, registry path, SQL connection).
@@ -98,7 +98,7 @@ Work from the repository root unless noted. The steps below are written so they 
    - Submit intent with conflicting payload and assert 409.
    - Query unknown intent and assert 404.
 
-6) Update `backend/spec/submission-manager.md` with a new HTTP API section that documents endpoints, request/response JSON, and error mapping. Update `backend/README.md` to show how to run the new HTTP service.
+6) Update `specs/submission-manager.md` with a new HTTP API section that documents endpoints, request/response JSON, and error mapping. Update `backend/README.md` to show how to run the new HTTP service.
 
 7) Run tests from `backend/`:
 
