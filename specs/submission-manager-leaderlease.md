@@ -1,196 +1,240 @@
- ———
+# SubmissionManager leader lease (SQL Server) - draft
 
-  Solution (short)
-  Use a single SQL‑Server–backed lease row to elect exactly one leader. Every instance runs the HTTP API; only the current lease holder runs the executor
-  loop. Leadership is renewed on a timer; loss of lease immediately stops further attempt execution. All lease comparisons use SQL Server time to avoid clock
-  skew.
+## Purpose
 
-  ———
+Enable multiple SubmissionManager instances behind HAProxy for high-availability HTTP while guaranteeing exactly one executor at any time, using SQL Server as the source of truth.
 
-  # Spec draft — SubmissionManager leadership lease (SQL Server)
+## Non-goals
 
-  ## Purpose
+- No per-intent claiming or multi-worker execution.
+- No gateway contract changes.
+- No delivery tracking or callbacks.
 
-  Enable multiple SubmissionManager instances behind HAProxy for high‑availability HTTP while guaranteeing exactly one executor at any time, using SQL Server
-  as the source of truth.
+## Summary
 
-  ## Non‑goals
+- All instances serve the HTTP API.
+- Exactly one instance (leader) runs the executor loop.
+- Leadership is represented by a single SQL lease row with an expiry time based on SQL Server time.
+- Loss of lease stops further attempt execution immediately.
 
-  - No per‑intent claiming or multi‑worker execution.
-  - No gateway contract changes.
-  - No delivery tracking or callbacks.
+## Concepts
 
-  ## New concepts
+### Lease
 
-  ### Lease
+A single SQL row represents the leadership lease. The lease has:
 
-  A single SQL row represents the leadership lease. The lease has:
+- lease_name (constant name for the executor lease)
+- holder_id (instance identity)
+- expires_at (UTC timestamp in SQL Server time)
+- acquired_at, renewed_at (UTC, SQL Server time)
+- lease_epoch (monotonic integer, increments on successful acquire)
 
-  - lease_name (constant name for the executor lease)
-  - holder_id (instance identity)
-  - expires_at (UTC timestamp in SQL Server time)
-  - acquired_at, renewed_at (UTC, SQL time)
-  - lease_epoch (monotonic integer, increments on successful acquire; used for diagnostics)
+### Leader vs follower
 
-  ### Leader vs Follower
+- Leader: holds the lease and runs the executor loop.
+- Follower: serves HTTP only; must not execute attempts.
 
-  - Leader: holds the lease and runs the executor loop.
-  - Follower: serves HTTP only; must not execute attempts.
+## Data model
 
-  ## SQL schema
+Table: submission_manager_leases
 
-  Table: submission_manager_leases
+- lease_name varchar(64) PK
+- holder_id varchar(128) NOT NULL
+- lease_epoch bigint NOT NULL
+- acquired_at datetime2(7) NOT NULL
+- renewed_at datetime2(7) NOT NULL
+- expires_at datetime2(7) NOT NULL
 
-  - lease_name varchar(64) PK
-  - holder_id varchar(128) NOT NULL
-  - lease_epoch bigint NOT NULL
-  - acquired_at datetime2(7) NOT NULL
-  - renewed_at datetime2(7) NOT NULL
-  - expires_at datetime2(7) NOT NULL
+Notes:
 
-  Notes:
+- All timestamps use SQL Server time (SYSUTCDATETIME()).
+- Only one row is expected for lease_name = 'submission-manager-executor'.
 
-  - All timestamps use SQL Server time (SYSUTCDATETIME()).
-  - Only one row is expected for lease_name = 'submission-manager-executor'.
+## Lease operations
 
-  ## Lease operations
+### Acquire (or re-acquire)
 
-  ### Acquire (or re‑acquire)
+Acquire succeeds if no row exists or if the current lease has expired.
 
-  Acquire succeeds if no row exists or if the current lease has expired.
+Atomic behavior:
 
-  Atomic behavior:
+- If row exists and expires_at > now, acquire fails.
+- If row exists and expired, update it to the current holder and extend expiry.
+- If row is missing, insert it.
 
-  - If row exists and expires_at > now, acquire fails.
-  - If row exists and expired, update it to current holder and extend expiry.
-  - If row missing, insert it.
+On success:
 
-  Lease epoch
+- Set acquired_at and renewed_at to now.
+- Set expires_at to now + lease_duration.
+- Increment lease_epoch on every successful acquire, even if the same holder_id re-acquires after expiry (initialize to 1 if inserting). Lease_epoch does not change on renew.
 
-  - Increment lease_epoch on successful acquire (not on renew).
+### Renew
 
-  ### Renew
+Leader renews periodically by extending expires_at only if the row is still held by the same holder_id and the lease is not expired.
 
-  Leader renews periodically by extending expires_at only if the row is still held by the same holder_id.
+If renew fails (row not held, lease expired, SQL error, or timeout), leadership is lost immediately.
 
-  If renew fails (row not held, SQL error, or timeout), leadership is lost immediately.
+Explicit release on shutdown is omitted in this phase.
 
-  ### Time base
+## Fencing invariant (mandatory)
 
-  All lease comparisons use SYSUTCDATETIME() inside SQL statements.
-  No comparisons use local machine time.
+lease_epoch is a fencing token. Every executor-side write that mutates execution state MUST be conditional on holding the current lease_epoch at the time of the write.
 
-  ## Runtime behavior
+Acceptable enforcement patterns:
 
-  ### Startup
+- Include lease_epoch (and holder_id) in every UPDATE/INSERT predicate, or
+- Re-read (holder_id, lease_epoch) immediately before each state transition and fence the write with that value.
 
-  1. Start as follower.
-  2. Attempt to acquire lease.
-  3. If acquired, become leader and start executor loop.
-  4. If not acquired, remain follower and retry acquisition periodically.
+If a fenced write affects 0 rows, the executor MUST treat it as lease loss, stop execution, and drop leadership.
 
-  ### Renewal loop
+### Time base
 
-  - Run every renew_interval.
-  - On success: keep leadership.
-  - On failure or SQL error: drop leadership and stop executor.
+All lease comparisons use SYSUTCDATETIME() inside SQL statements. No comparisons use local machine time.
 
-  ### Executor loop gating
+## Runtime behavior
 
-  Leader‑only:
+### Startup
 
-  - Before dequeueing an attempt.
-  - Before executing an attempt.
+1. Start as follower.
+2. Attempt to acquire the lease.
+3. If acquired, become leader and start the executor loop.
+4. If not acquired, remain follower and retry acquisition periodically.
 
-  If leadership is lost:
+### Renewal loop
 
-  - No new attempts may begin.
-  - Any in‑flight attempt may complete (single‑threaded loop), then execution stops.
+- Run every renew_interval.
+- On success: keep leadership.
+- On failure or SQL error: drop leadership and stop executor.
 
-  ### Leadership transitions
+### Executor loop gating
 
-  - Leader → Follower on lease loss or renew failure.
-  - Follower → Leader on successful acquire.
+Leader-only:
 
-  ## Health & diagnostics
+- Before dequeueing an attempt.
+- Before executing an attempt.
 
-  ### Logs
+If leadership is lost:
 
-  Emit structured logs on:
+- No new attempts may begin.
+- In-flight attempt handling depends on whether provider submission has occurred:
+  - If provider submission has not yet happened, abort the attempt.
+  - If provider submission has happened, the attempt may complete, but no further state transitions may occur without a leadership check and fencing.
 
-  - leader_acquired
-  - leader_renewed
-  - leader_lost
-  - leader_acquire_failed
-  - leader_renew_failed
+### Leadership transitions
 
-  Include: holder_id, lease_epoch, expires_at, sql_error if any.
+- Leader -> Follower on lease loss or renew failure.
+- Follower -> Leader on successful acquire.
 
-  ### Health endpoints
+### Schedule rebuild
 
-  - /healthz unchanged (HTTP availability).
-  - /readyz includes role info.
+Only the leader builds the in-memory schedule. Followers do not build schedules until they become leader.
+This reduces follower load at the cost of a short rebuild delay during failover.
 
-  Required behavior: /readyz response must state leader or follower mode for diagnostics.
-  Example response body:
+## Race conditions and handling
 
-  mode=leader holder_id=sm-01 lease_expires_at=2026-02-02T12:00:10Z
+### Concurrent acquire attempts
 
-  (Exact format is not a client contract; for human/operators.)
+Multiple followers may try to acquire at the same time when the lease expires.
+Handling: acquire is a single conditional insert/update using SQL Server time; only one statement succeeds and others observe zero rows affected.
 
-  ## Configuration
+### Acquire vs renew overlap
 
-  Minimal internal knobs (not part of client contract):
+A follower may try to acquire while the leader renews.
+Handling: renew requires holder_id match and expires_at > now, while acquire requires expires_at <= now. These predicates are mutually exclusive when evaluated in SQL Server time, so only one succeeds. If renew wins, acquire fails. If acquire wins after expiry, renew fails and the old leader drops leadership.
 
-  - lease_duration (default 20s)
-  - renew_interval (default 5s; must be < lease_duration)
-  - holder_id (default: hostname-pid-rand)
+### Expiry boundary race
 
-  Optional:
+Multiple instances may observe the lease expiring at nearly the same time.
+Handling: the acquire statement uses a single SQL predicate on expires_at <= now, so only one update or insert succeeds.
 
-  - lease_name (default: submission-manager-executor)
+### Leader pause or long GC
 
-  ## Failure handling
+If the leader stops renewing, the lease expires and another instance may become leader.
+Handling: the executor must stop on renew failure and must check leadership before dequeueing and before executing each attempt. Any in-flight attempt may complete, but no new attempt may start.
 
-  ### Concurrent startup
+### SQL connectivity loss (split-brain risk)
 
- plans/admin-portal-troubleshoot-execplan.md                      |  212 ++++++++++++++++
- plans/intent-history-execplan.md                                 |  186 ++++++++++++++
- ui/health_overview.tmpl                                          |    4 +-
- ui/health_services.tmpl                                          |   47 ----
- ui/manager_history_results.tmpl                                  |   74 ++++++
-  Only one instance will acquire the lease because the acquire/renew update is conditional.
+If the leader cannot reach SQL, it cannot prove it still holds the lease.
+Handling: any renew failure or SQL error immediately drops leadership and stops the executor.
 
-  ### Leader crash
+### Leadership loss during schedule rebuild
 
-  Lease expires after lease_duration. Next follower acquires and becomes leader.
+Leadership can be lost while rebuilding the in-memory schedule.
+Handling: after rebuild and before executing the first attempt, re-check leadership; if lost, discard the schedule and stop.
 
-  ### Leader restart
+### Likelihood and impact
 
-  If old lease expired, it can re‑acquire; otherwise it stays follower until expiry.
+This race is low likelihood per event but high likelihood over long runtimes. DB/network stalls or long pauses can exceed the lease duration, leading to lease expiry and concurrent execution.
+Impact is high: split-brain execution can cause conflicting state writes and duplicate external submissions. The fencing invariant above is mandatory to prevent conflicting state writes even when overlapping execution occurs.
 
-  ### SQL connectivity issues
+## Health and diagnostics
 
-  On renewal failure or SQL error:
+### Logs
 
-  - leadership is dropped immediately.
-  - executor loop stops.
-  - instance stays follower until it can reacquire.
+Emit structured logs on:
 
-  ## Compatibility with existing semantics
+- leader_acquired
+- leader_renewed
+- leader_lost
+- leader_acquire_failed
+- leader_renew_failed
 
-  - Contract snapshot per intent is unchanged.
-  - Attempts remain append‑only; attempt_count is authoritative.
-  - Idempotency remains across restarts.
-  - Scheduling is still rebuilt from SQL on leader startup.
-  - HTTP behavior and gateway interaction are unchanged.
+Include: holder_id, lease_epoch, expires_at, sql_error (when present).
 
-  ## Tests (must exist)
+### Health endpoints
 
-  1. Single leader on concurrent start
-     Start two instances; assert only one becomes leader and executes attempts.
-  2. Failover after expiry
-     Kill leader (or stop renew). Verify follower acquires after lease expiry.
-  3. No execution without leadership
-     Ensure attempts are not executed by followers (even if scheduled).
+- /healthz unchanged (HTTP availability).
+- /readyz includes role info.
 
+Example response body:
+
+mode=leader holder_id=sm-01 lease_expires_at=2026-02-02T12:00:10Z
+
+(Exact format is not a client contract; for humans/operators.)
+
+/readyz returns 200 for both leaders and followers so followers remain in HTTP rotation.
+
+## Configuration (internal)
+
+- lease_duration (default 60s)
+- renew_interval (default 20s; must be < lease_duration)
+- acquire_interval (default 30s)
+- holder_id (default: hostname-pid-rand)
+- lease_name (default: submission-manager-executor)
+
+## Failure handling
+
+### Concurrent startup
+
+Only one instance acquires the lease because the acquire/renew update is conditional.
+
+### Leader crash
+
+Lease expires after lease_duration. A follower acquires and becomes leader.
+
+### Leader restart
+
+If the old lease is expired, the instance can re-acquire; otherwise it stays follower until expiry.
+
+### SQL connectivity issues
+
+On renewal failure or SQL error:
+
+- Leadership is dropped immediately.
+- Executor loop stops.
+- Instance stays follower until it can reacquire.
+
+## Compatibility with existing semantics
+
+- Contract snapshot per intent is unchanged.
+- Attempts remain append-only; attempt_count is authoritative.
+- Idempotency remains across restarts.
+- Scheduling is still rebuilt from SQL on leader startup.
+- HTTP behavior and gateway interaction are unchanged.
+
+## Tests (must exist)
+
+1. Single leader on concurrent start.
+2. Failover after expiry.
+3. No execution without leadership.
+4. Leader stops executing immediately on lease loss.
