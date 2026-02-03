@@ -13,6 +13,9 @@ func (m *Manager) Run(ctx context.Context) {
 		ctx = context.Background()
 	}
 	for {
+		if !m.isLeader() {
+			return
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -20,6 +23,10 @@ func (m *Manager) Run(ctx context.Context) {
 		}
 
 		m.mu.Lock()
+		if !m.leader {
+			m.mu.Unlock()
+			return
+		}
 		if len(m.queue.items) == 0 {
 			m.mu.Unlock()
 			select {
@@ -29,18 +36,45 @@ func (m *Manager) Run(ctx context.Context) {
 				continue
 			}
 		}
+		m.mu.Unlock()
+
+		now, err := m.scheduleTimeNow(ctx)
+		if err != nil {
+			if ctx.Err() == nil {
+				m.notifyLeaseLoss()
+			}
+			return
+		}
+
+		m.mu.Lock()
+		if !m.leader {
+			m.mu.Unlock()
+			return
+		}
+		if len(m.queue.items) == 0 {
+			m.mu.Unlock()
+			continue
+		}
 
 		next := m.queue.items[0]
-		now := m.clock.Now()
 		wait := next.due.Sub(now)
 		if wait <= 0 {
 			// Concurrency/locking intent: pop under lock so the queue stays correct,
 			// then run outside the lock so we do not hold it during the gateway call.
 			heap.Pop(&m.queue)
+			due, ok := m.scheduled[next.intentID]
+			if !ok || !due.Equal(next.due) {
+				m.mu.Unlock()
+				continue
+			}
+			delete(m.scheduled, next.intentID)
 			if m.metrics != nil {
-				m.metrics.SetQueueDepth(len(m.queue.items))
+				m.metrics.SetQueueDepth(len(m.scheduled))
 			}
 			m.mu.Unlock()
+			if !m.isLeader() {
+				return
+			}
 			m.executeAttempt(ctx, next.intentID, next.due)
 			continue
 		}
@@ -64,14 +98,21 @@ func (m *Manager) enqueueAttempt(intentID string, due time.Time) {
 }
 
 func (m *Manager) enqueueAttemptLocked(intentID string, due time.Time) {
+	if m.scheduled == nil {
+		m.scheduled = make(map[string]time.Time)
+	}
+	if existing, ok := m.scheduled[intentID]; ok && existing.Equal(due) {
+		return
+	}
 	m.nextSeq++
+	m.scheduled[intentID] = due
 	heap.Push(&m.queue, scheduledAttempt{
 		intentID: intentID,
 		due:      due,
 		seq:      m.nextSeq,
 	})
 	if m.metrics != nil {
-		m.metrics.SetQueueDepth(len(m.queue.items))
+		m.metrics.SetQueueDepth(len(m.scheduled))
 	}
 	select {
 	case m.wake <- struct{}{}:

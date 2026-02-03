@@ -20,7 +20,7 @@ The runner performs the following checks:
 - SMS rejected: submit `sms.realtime` with invalid recipient, expect `rejected` + `invalid_recipient`, verify webhook delivery.
 - Exhausted: submit `sms.realtime` with message `FAIL`, wait for `exhausted` + `deadline_exceeded`, verify webhook delivery, and confirm multiple attempts in history.
 - Idempotency: resubmitting the same intentId with same payload is accepted as idempotent; different payload returns HTTP 409.
-- Restart recovery (optional): submit a failing intent, restart submission-manager, and verify attempts continue.
+- Restart recovery (optional): submit a failing intent, restart submission-manager instances, and verify attempts continue.
 - Sync wait: submit with `waitSeconds` and expect a terminal response (not pending).
 - Intent history: GET intent + history and confirm at least one attempt.
 - Admin portal flows (optional): SMS and Push send endpoints return the expected intentId.

@@ -13,7 +13,7 @@ Prefer explicit, minimal changes that preserve the current submission-only contr
 
 Phase 1 defines the SubmissionTarget registry and contract validation only (no execution engine yet).
 
-- `backend/spec/submission-manager.md` defines SubmissionIntent, gatewayType, submissionTarget, and contract semantics.
+- `specs/submission-manager.md` defines SubmissionIntent, gatewayType, submissionTarget, and contract semantics.
 - `backend/conf/submission/submission_targets.json` is the sample registry for SubmissionManager.
 - `backend/submission/README.md` describes the registry loader behavior.
 
@@ -46,6 +46,19 @@ Endpoints:
 
 - POST `http://localhost:8082/v1/intents` (optional `waitSeconds` query param for synchronous wait)
 - GET `http://localhost:8082/v1/intents/{intentId}`
+
+Leader lease configuration (multi-instance):
+
+- `-lease-duration` (default `60s`, env `SM_LEASE_DURATION`)
+- `-lease-renew-interval` (default `20s`, env `SM_RENEW_INTERVAL`)
+- `-lease-acquire-interval` (default `30s`, env `SM_ACQUIRE_INTERVAL`)
+- `-schedule-refresh-interval` (default `1s`, env `SM_SCHEDULE_REFRESH_INTERVAL`)
+- `-lease-name` (default `submission-manager-executor`, env `SM_LEASE_NAME`)
+- `-holder-id` (default `hostname-pid-rand`, env `SM_HOLDER_ID`)
+
+`/readyz` includes the local role for operators (still HTTP 200 for leaders and followers). Example:
+
+`mode=leader holder_id=sm-01 lease_expires_at=2026-02-02T12:00:10Z`
 
 Response JSON:
 

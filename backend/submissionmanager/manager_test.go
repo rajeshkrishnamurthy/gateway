@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"runtime"
 	"strings"
 	"sync"
@@ -215,6 +216,10 @@ func newManager(t *testing.T, reg submission.Registry, exec AttemptExecutor, clo
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
+	manager.scheduleNow = func(ctx context.Context) (time.Time, error) {
+		_ = ctx
+		return clock.Now(), nil
+	}
 	return manager
 }
 
@@ -225,8 +230,50 @@ func contractWithWebhook(contract submission.TargetContract) submission.TargetCo
 	return contract
 }
 
+func activateLeader(t *testing.T, manager *Manager) LeaseFence {
+	t.Helper()
+	holderID := fmt.Sprintf("test-%s-%d", t.Name(), time.Now().UnixNano())
+	cfg := LeaseConfig{
+		LeaseName:     "submission-manager-executor",
+		HolderID:      holderID,
+		LeaseDuration: 2 * time.Minute,
+	}
+	lease, acquired, err := manager.store.acquireLease(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("acquire lease: %v", err)
+	}
+	if !acquired {
+		t.Fatalf("expected lease acquisition to succeed")
+	}
+	fence := LeaseFence{
+		LeaseName:  cfg.LeaseName,
+		HolderID:   cfg.HolderID,
+		LeaseEpoch: lease.leaseEpoch,
+	}
+	manager.setLeader(fence, func() {})
+	return fence
+}
+
+func expireLease(t *testing.T, manager *Manager) {
+	t.Helper()
+	_, err := manager.store.db.ExecContext(
+		context.Background(),
+		`UPDATE dbo.submission_manager_leases
+     SET expires_at = DATEADD(SECOND, -1, SYSUTCDATETIME())
+     WHERE lease_name = @p1`,
+		"submission-manager-executor",
+	)
+	if err != nil {
+		t.Fatalf("expire lease: %v", err)
+	}
+}
+
 func startManager(t *testing.T, manager *Manager) (context.Context, context.CancelFunc, chan struct{}) {
 	t.Helper()
+	activateLeader(t, manager)
+	if _, err := manager.rebuildSchedule(context.Background()); err != nil {
+		t.Fatalf("rebuild schedule: %v", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
@@ -470,6 +517,7 @@ func TestRestartRebuildsSchedule(t *testing.T) {
 	waitForAttempts(t, manager, "intent-1", 1)
 	cancel()
 	<-done
+	expireLease(t, manager)
 
 	manager = newManager(t, reg, stub.Exec, clock, db)
 	_, cancel, done = startManager(t, manager)

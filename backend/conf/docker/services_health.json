@@ -151,6 +151,11 @@
           "uiUrl": "http://localhost:8081/ui"
         },
         {
+          "name": "submission-manager-frontend",
+          "addr": ":8082",
+          "healthUrl": "http://localhost:8082/readyz"
+        },
+        {
           "name": "stats",
           "addr": ":8404",
           "healthUrl": "http://localhost:8404/stats",
@@ -161,8 +166,8 @@
       "toggleInstance": "sms-frontend"
     },
     {
-      "id": "submission-manager",
-      "label": "Submission Manager",
+      "id": "submission-manager-1",
+      "label": "Submission Manager (1)",
       "startCommand": [
         "docker",
         "compose",
@@ -170,7 +175,7 @@
         "../docker-compose.yml",
         "up",
         "-d",
-        "submission-manager"
+        "submission-manager-1"
       ],
       "stopCommand": [
         "docker",
@@ -178,13 +183,41 @@
         "-f",
         "../docker-compose.yml",
         "stop",
-        "submission-manager"
+        "submission-manager-1"
       ],
       "instances": [
         {
-          "name": "submission-manager",
-          "addr": ":8082",
-          "healthUrl": "http://localhost:8082/readyz"
+          "name": "submission-manager-1",
+          "addr": ":18082",
+          "healthUrl": "http://localhost:18082/readyz"
+        }
+      ]
+    },
+    {
+      "id": "submission-manager-2",
+      "label": "Submission Manager (2)",
+      "startCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "up",
+        "-d",
+        "submission-manager-2"
+      ],
+      "stopCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "stop",
+        "submission-manager-2"
+      ],
+      "instances": [
+        {
+          "name": "submission-manager-2",
+          "addr": ":18083",
+          "healthUrl": "http://localhost:18083/readyz"
         }
       ]
     },

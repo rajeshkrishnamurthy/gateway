@@ -6,10 +6,10 @@ import (
 	"gateway/submissionmanager"
 )
 
-func newMux(server *apiServer, ui *managerUIServer, metrics *submissionmanager.Metrics) *http.ServeMux {
+func newMux(server *apiServer, ui *managerUIServer, metrics *submissionmanager.Metrics, statusFn func() submissionmanager.LeaseStatus) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", handleHealthz)
-	mux.HandleFunc("/readyz", handleReadyz)
+	mux.HandleFunc("/readyz", handleReadyz(statusFn))
 	mux.Handle("/metrics", handleMetrics(metrics))
 	mux.HandleFunc("/v1/intents", server.handleSubmit)
 	mux.HandleFunc("/v1/intents/", server.handleGet)

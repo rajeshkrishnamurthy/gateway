@@ -60,8 +60,8 @@ When writing complex features or significant refactors, use an ExecPlan (as desc
 - Stable diffs > refactors.
 
 ## Specs and README
-- Treat `backend/spec/` as canonical for system semantics.
-- When behavior or semantics change, update the relevant spec/README in the same change.
+- Treat `specs/` as canonical for system semantics.
+- When behavior or semantics change, update the relevant specs/README in the same change.
 
 ## Comments (Strict, drift-resistant)
 - Purpose: comments must capture intent or constraints that are not obvious from code alone. Anything else belongs in specs/README.

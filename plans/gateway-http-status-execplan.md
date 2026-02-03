@@ -10,7 +10,7 @@ After this change, the gateway will return HTTP 2xx for any normalized outcome (
 
 ## Progress
 
-- [x] (2026-01-29 18:11Z) Review existing gateway status semantics in `backend/spec/gateway-contracts.md` and `backend/README.md`.
+- [x] (2026-01-29 18:11Z) Review existing gateway status semantics in `specs/gateway-contracts.md` and `backend/README.md`.
 - [x] (2026-01-29 18:11Z) Update gateway handlers to return 2xx for all normalized outcomes (accepted or rejected) and reserve non‑2xx for non‑normalizable failures.
 - [x] (2026-01-29 18:11Z) Update gateway tests to expect 2xx for rejected outcomes (including invalid_request and duplicate_reference).
 - [x] (2026-01-29 18:11Z) Update the SubmissionManager executor to parse JSON outcomes only on 2xx and treat non‑2xx as attempt errors.
@@ -41,7 +41,7 @@ Gateway HTTP status semantics now return 2xx for all normalized outcomes and res
 
 ## Context and Orientation
 
-Gateway HTTP behavior is defined in `backend/spec/gateway-contracts.md` and summarized in the “HTTP status semantics” section of `backend/README.md`. SMS and push gateway handlers live in `backend/cmd/sms-gateway/main.go` and `backend/cmd/push-gateway/main.go`. The SubmissionManager HTTP adapter (Phase 3b) lives in `backend/cmd/submission-manager/` and uses `executor.go` to make gateway HTTP calls and parse normalized outcomes.
+Gateway HTTP behavior is defined in `specs/gateway-contracts.md` and summarized in the “HTTP status semantics” section of `backend/README.md`. SMS and push gateway handlers live in `backend/cmd/sms-gateway/main.go` and `backend/cmd/push-gateway/main.go`. The SubmissionManager HTTP adapter (Phase 3b) lives in `backend/cmd/submission-manager/` and uses `executor.go` to make gateway HTTP calls and parse normalized outcomes.
 
 Normalized outcomes are the gateway JSON responses with `status` (accepted|rejected) and `reason` (when rejected). SubmissionManager relies on those normalized outcomes and should not depend on HTTP status codes beyond error detection.
 
@@ -55,7 +55,7 @@ Update the documentation to reflect the new HTTP status contract and keep the sp
 
 ## Concrete Steps
 
-1) Read and update `backend/spec/gateway-contracts.md` to state that normalized outcomes always return 2xx and non‑2xx is reserved for non‑normalizable failures.
+1) Read and update `specs/gateway-contracts.md` to state that normalized outcomes always return 2xx and non‑2xx is reserved for non‑normalizable failures.
 
 2) Update `backend/README.md` “HTTP status semantics” to align with the new contract (rejected is still a valid response, now always 2xx).
 
@@ -106,7 +106,7 @@ Example non‑normalizable failure (internal error):
 ## Interfaces and Dependencies
 
 - Gateway handlers: `backend/cmd/sms-gateway/main.go`, `backend/cmd/push-gateway/main.go`
-- Specs: `backend/spec/gateway-contracts.md`, `backend/README.md`
+- Specs: `specs/gateway-contracts.md`, `backend/README.md`
 - Executor: `backend/cmd/submission-manager/executor.go`
 - Tests: gateway handler tests and new executor tests under `backend/cmd/submission-manager/`
 

@@ -69,9 +69,10 @@ func (s *sqlStore) insertIntent(ctx context.Context, intent Intent, payloadHash 
       attempt_count,
       created_at,
       updated_at,
+      last_modified_at,
       next_attempt_at
     ) VALUES (
-      @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15, @p16, @p17, @p18, @p19, @p20, @p21, @p22, @p23, @p24, @p25, @p26
+      @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15, @p16, @p17, @p18, @p19, @p20, @p21, @p22, @p23, @p24, @p25, SYSUTCDATETIME(), @p26
     )`,
 		intent.IntentID,
 		intent.SubmissionTarget,
@@ -144,8 +145,7 @@ func (s *sqlStore) loadIntent(ctx context.Context, intentID string) (Intent, boo
 	return intent, true, nil
 }
 
-func (s *sqlStore) loadIntentForExecution(ctx context.Context, intentID string, now time.Time) (Intent, int, bool, error) {
-	now = now.UTC()
+func (s *sqlStore) loadIntentForExecution(ctx context.Context, intentID string) (Intent, int, bool, error) {
 	row := s.db.QueryRowContext(
 		ctx,
 		`SELECT intent_id,
@@ -177,10 +177,9 @@ func (s *sqlStore) loadIntentForExecution(ctx context.Context, intentID string, 
     WHERE intent_id = @p1
       AND status = @p2
       AND next_attempt_at IS NOT NULL
-      AND next_attempt_at <= @p3`,
+      AND next_attempt_at <= SYSUTCDATETIME()`,
 		intentID,
 		string(IntentPending),
-		now,
 	)
 
 	intent, attemptCount, ok, err := s.scanIntentRow(row)
@@ -353,7 +352,7 @@ func (s *sqlStore) scanIntentRow(row *sql.Row) (Intent, int, bool, error) {
 	return intent, attemptCount, true, nil
 }
 
-func (s *sqlStore) markExhausted(ctx context.Context, intentID string, exhaustedReason string, now time.Time) (bool, error) {
+func (s *sqlStore) markExhausted(ctx context.Context, fence LeaseFence, intentID string, exhaustedReason string, now time.Time) (bool, error) {
 	now = now.UTC()
 	result, err := s.db.ExecContext(
 		ctx,
@@ -363,13 +362,25 @@ func (s *sqlStore) markExhausted(ctx context.Context, intentID string, exhausted
          final_outcome_reason = NULL,
          exhausted_reason = @p2,
          next_attempt_at = NULL,
-         updated_at = @p3
-     WHERE intent_id = @p4 AND status = @p5`,
+         updated_at = @p3,
+         last_modified_at = SYSUTCDATETIME()
+     WHERE intent_id = @p4 AND status = @p5
+       AND EXISTS (
+         SELECT 1
+         FROM dbo.submission_manager_leases
+         WHERE lease_name = @p6
+           AND holder_id = @p7
+           AND lease_epoch = @p8
+           AND expires_at > SYSUTCDATETIME()
+       )`,
 		string(IntentExhausted),
 		nullString(exhaustedReason),
 		now,
 		intentID,
 		string(IntentPending),
+		fence.LeaseName,
+		fence.HolderID,
+		fence.LeaseEpoch,
 	)
 	if err != nil {
 		return false, err

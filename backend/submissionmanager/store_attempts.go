@@ -51,7 +51,7 @@ func (s *sqlStore) loadAttempts(ctx context.Context, intentID string) ([]Attempt
 	return attempts, nil
 }
 
-func (s *sqlStore) recordAttempt(ctx context.Context, intentID string, attempt Attempt, status IntentStatus, finalOutcome GatewayOutcome, exhaustedReason string, nextAttemptAt *time.Time, now time.Time) (bool, error) {
+func (s *sqlStore) recordAttempt(ctx context.Context, fence LeaseFence, intentID string, attempt Attempt, status IntentStatus, finalOutcome GatewayOutcome, exhaustedReason string, nextAttemptAt *time.Time, now time.Time) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -78,11 +78,20 @@ func (s *sqlStore) recordAttempt(ctx context.Context, intentID string, attempt A
 	attemptNumber := attemptCount + 1
 	startedAt := attempt.StartedAt.UTC()
 	finishedAt := attempt.FinishedAt.UTC()
-	_, err = tx.ExecContext(
+	result, err := tx.ExecContext(
 		ctx,
 		`INSERT INTO dbo.submission_attempts (
       intent_id, attempt_number, started_at, finished_at, outcome_status, outcome_reason, error
-    ) VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7)`,
+    )
+    SELECT @p1, @p2, @p3, @p4, @p5, @p6, @p7
+    WHERE EXISTS (
+      SELECT 1
+      FROM dbo.submission_manager_leases
+      WHERE lease_name = @p8
+        AND holder_id = @p9
+        AND lease_epoch = @p10
+        AND expires_at > SYSUTCDATETIME()
+    )`,
 		intentID,
 		attemptNumber,
 		startedAt,
@@ -90,9 +99,19 @@ func (s *sqlStore) recordAttempt(ctx context.Context, intentID string, attempt A
 		nullString(attempt.GatewayOutcome.Status),
 		nullString(attempt.GatewayOutcome.Reason),
 		nullString(attempt.Error),
+		fence.LeaseName,
+		fence.HolderID,
+		fence.LeaseEpoch,
 	)
 	if err != nil {
 		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, nil
 	}
 
 	var nextAttemptValue sql.NullTime
@@ -111,7 +130,7 @@ func (s *sqlStore) recordAttempt(ctx context.Context, intentID string, attempt A
 	}
 
 	now = now.UTC()
-	_, err = tx.ExecContext(
+	result, err = tx.ExecContext(
 		ctx,
 		`UPDATE dbo.submission_intents
      SET attempt_count = @p1,
@@ -120,8 +139,17 @@ func (s *sqlStore) recordAttempt(ctx context.Context, intentID string, attempt A
          final_outcome_reason = @p4,
          exhausted_reason = @p5,
          next_attempt_at = @p6,
-         updated_at = @p7
-     WHERE intent_id = @p8`,
+         updated_at = @p7,
+         last_modified_at = SYSUTCDATETIME()
+     WHERE intent_id = @p8
+       AND EXISTS (
+         SELECT 1
+         FROM dbo.submission_manager_leases
+         WHERE lease_name = @p9
+           AND holder_id = @p10
+           AND lease_epoch = @p11
+           AND expires_at > SYSUTCDATETIME()
+       )`,
 		attemptNumber,
 		string(status),
 		finalStatus,
@@ -130,9 +158,19 @@ func (s *sqlStore) recordAttempt(ctx context.Context, intentID string, attempt A
 		nextAttemptValue,
 		now,
 		intentID,
+		fence.LeaseName,
+		fence.HolderID,
+		fence.LeaseEpoch,
 	)
 	if err != nil {
 		return false, err
+	}
+	affected, err = result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, nil
 	}
 
 	if err := tx.Commit(); err != nil {

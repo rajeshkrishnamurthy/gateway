@@ -304,7 +304,7 @@ func TestHandleHealthzAndReadyz(t *testing.T) {
 
 	req = httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	rr = httptest.NewRecorder()
-	handleReadyz(rr, req)
+	handleReadyz(nil).ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
 	}

@@ -19,10 +19,20 @@ const (
 
 func (m *Manager) executeAttempt(ctx context.Context, intentID string, due time.Time) {
 	// Flow intent: load intent, call gateway, apply policy, save result.
+	fence, ok := m.currentFence()
+	if !ok {
+		return
+	}
 	start := m.clock.Now()
 
-	intent, attemptCount, ok, err := m.store.loadIntentForExecution(ctx, intentID, start)
-	if err != nil || !ok {
+	intent, attemptCount, ok, err := m.store.loadIntentForExecution(ctx, intentID)
+	if err != nil {
+		if ctx == nil || ctx.Err() == nil {
+			m.notifyLeaseLoss()
+		}
+		return
+	}
+	if !ok {
 		return
 	}
 	if m.metrics != nil {
@@ -33,8 +43,14 @@ func (m *Manager) executeAttempt(ctx context.Context, intentID string, due time.
 		deadline := intent.CreatedAt.Add(time.Duration(intent.Contract.MaxAcceptanceSeconds) * time.Second)
 		// Policy vs outcome: do not execute attempts after the acceptance deadline.
 		if !start.Before(deadline) {
-			applied, _ := m.store.markExhausted(ctx, intentID, "deadline_exceeded", start)
-			if applied && m.metrics != nil {
+			applied, err := m.store.markExhausted(ctx, fence, intentID, "deadline_exceeded", start)
+			if err != nil || !applied {
+				if ctx == nil || ctx.Err() == nil {
+					m.notifyLeaseLoss()
+				}
+				return
+			}
+			if m.metrics != nil {
 				m.metrics.ObserveIntentTerminal(IntentExhausted, start.Sub(intent.CreatedAt))
 				m.metrics.ObserveExhausted("deadline_exceeded")
 			}
@@ -50,6 +66,10 @@ func (m *Manager) executeAttempt(ctx context.Context, intentID string, due time.
 	if m.metrics != nil {
 		m.metrics.IncInflight()
 		defer m.metrics.DecInflight()
+	}
+
+	if !m.isLeader() {
+		return
 	}
 
 	outcome, err := m.exec(ctx, AttemptInput{
@@ -83,8 +103,11 @@ func (m *Manager) executeAttempt(ctx context.Context, intentID string, due time.
 	if retry {
 		nextAttemptAt = &due
 	}
-	applied, err := m.store.recordAttempt(ctx, intentID, attempt, intent.Status, intent.FinalOutcome, intent.ExhaustedReason, nextAttemptAt, finish)
+	applied, err := m.store.recordAttempt(ctx, fence, intentID, attempt, intent.Status, intent.FinalOutcome, intent.ExhaustedReason, nextAttemptAt, finish)
 	if err != nil || !applied {
+		if ctx == nil || ctx.Err() == nil {
+			m.notifyLeaseLoss()
+		}
 		return
 	}
 	if m.metrics != nil {

@@ -4,8 +4,8 @@ This repo is Docker-only for the MVP to keep dev and devops overhead low.
 
 Start here:
 - `setu-setup.md` for a new developer setup checklist (env vars + Compose).
-- `backend/spec/vision.md` for Setu vision, goals, and scope.
-- `backend/spec/capabilities.md` for current high-level implemented capabilities.
+- `specs/vision.md` for Setu vision, goals, and scope.
+- `specs/capabilities.md` for current high-level implemented capabilities.
 - `backend/README.md` for gateway contracts and Docker Compose usage.
 - `backend/cmd/services-health/README.md` for the Command Center.
 - `backend/cmd/admin-portal/README.md` for the Admin Portal.
