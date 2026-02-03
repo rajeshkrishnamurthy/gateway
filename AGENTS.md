@@ -15,7 +15,7 @@ All behavior is governed by an explicit **MODE** declared at the start of a Code
 
 Exactly one mode must be active per Codex session:
 
-* **PLAN MODE** — deciding intent
+* **SPEC MODE** — deciding intent
 * **EXEC MODE** — realizing frozen intent
 * **VERIFY MODE** — challenging correctness of realized intent
 
@@ -32,7 +32,7 @@ If a session’s mode is unclear, Codex must stop and ask.
 
 ---
 
-## PLAN MODE
+## SPEC MODE
 
 ### Authority
 
@@ -83,7 +83,7 @@ Codex must stop if:
 
 * **Primary actor:** Codex
 * **Human role:** Supervisor / reviewer only
-* **Intent status:** Frozen (`PLAN-READY`)
+* **Intent status:** Frozen
 
 ### Authoritative Inputs
 
