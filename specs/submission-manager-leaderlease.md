@@ -4,6 +4,14 @@
 
 Enable multiple SubmissionManager instances behind HAProxy for high-availability HTTP while guaranteeing exactly one executor at any time, using SQL Server as the source of truth.
 
+## Scope
+
+- Multiple SubmissionManager instances accept HTTP requests behind HAProxy.
+- Exactly one leader executes attempts using a SQL-backed lease.
+- The leader builds and maintains the in-memory schedule from SQL persistence.
+- Followers do not execute attempts and do not build schedules.
+- SQL Server is the source of truth for leadership and scheduling state.
+
 ## Non-goals
 
 - No per-intent claiming or multi-worker execution.
@@ -15,6 +23,7 @@ Enable multiple SubmissionManager instances behind HAProxy for high-availability
 - All instances serve the HTTP API.
 - Exactly one instance (leader) runs the executor loop.
 - Leadership is represented by a single SQL lease row with an expiry time based on SQL Server time.
+- The leader incrementally refreshes its in-memory schedule from SQL using a composite cursor on intent `last_modified_at`.
 - Loss of lease stops further attempt execution immediately.
 
 ## Concepts
@@ -50,6 +59,17 @@ Notes:
 - All timestamps use SQL Server time (SYSUTCDATETIME()).
 - Only one row is expected for lease_name = 'submission-manager-executor'.
 
+### Intent scheduling watermark (submission_intents)
+
+The `submission_intents` table requires a monotonic update marker so the leader can incrementally refresh its schedule.
+
+- last_modified_at datetime2(7) NOT NULL
+
+Rules:
+
+- `last_modified_at` is set on insert and updated on **every** update to the intent row.
+- Updates use SQL Server time (SYSUTCDATETIME()) in the same statement or transaction as the intent write.
+
 ## Lease operations
 
 ### Acquire (or re-acquire)
@@ -76,7 +96,14 @@ If renew fails (row not held, lease expired, SQL error, or timeout), leadership 
 
 Explicit release on shutdown is omitted in this phase.
 
-## Fencing invariant (mandatory)
+## Invariants
+
+- Exactly one leader executes attempts at any time; followers must not execute attempts.
+- All execution state mutations are fenced by the current lease_epoch (see below).
+- All lease and schedule time comparisons use SQL Server time.
+- Only the leader builds and refreshes the in-memory schedule.
+
+### Fencing invariant (mandatory)
 
 lease_epoch is a fencing token. Every executor-side write that mutates execution state MUST be conditional on holding the current lease_epoch at the time of the write.
 
@@ -91,13 +118,21 @@ If a fenced write affects 0 rows, the executor MUST treat it as lease loss, stop
 
 All lease comparisons use SYSUTCDATETIME() inside SQL statements. No comparisons use local machine time.
 
+## Concurrency guarantees
+
+- Only the leader may dequeue and begin new attempts.
+- The leader must re-check leadership before dequeueing and before executing each attempt.
+- All executor-side writes that mutate execution state are fenced by (holder_id, lease_epoch).
+- Followers may accept HTTP writes, but they must not execute attempts.
+- Schedule refresh must be idempotent and must not enqueue duplicate attempts when the same intent row is observed more than once.
+
 ## Runtime behavior
 
 ### Startup
 
 1. Start as follower.
 2. Attempt to acquire the lease.
-3. If acquired, become leader and start the executor loop.
+3. If acquired, become leader, rebuild the schedule from SQL, and start the executor loop.
 4. If not acquired, remain follower and retry acquisition periodically.
 
 ### Renewal loop
@@ -128,9 +163,28 @@ If leadership is lost:
 ### Schedule rebuild
 
 Only the leader builds the in-memory schedule. Followers do not build schedules until they become leader.
+On leadership acquisition, the leader performs a full rebuild from SQL persistence and establishes the initial refresh cursor.
 This reduces follower load at the cost of a short rebuild delay during failover.
 
-## Race conditions and handling
+### Schedule refresh (leader-only)
+
+The leader incrementally refreshes its in-memory schedule from SQL so it can pick up intents submitted to followers.
+
+Refresh loop:
+
+- Run every `schedule_refresh_interval`.
+- Query using the composite cursor `(last_modified_at, intent_id)`:
+  - `WHERE (last_modified_at > @t) OR (last_modified_at = @t AND intent_id > @id)`
+  - `ORDER BY last_modified_at, intent_id`
+- Load any changed intents into the in-memory schedule (including newly created intents and reschedules).
+- Advance the cursor to the last row processed.
+
+Rules:
+
+- `last_modified_at` is updated on every intent insert and update using SQL Server time.
+- If the refresh query fails with a SQL error, treat it as a SQL connectivity failure (drop leadership and stop the executor).
+
+## Race-condition handling
 
 ### Concurrent acquire attempts
 
@@ -161,6 +215,11 @@ Handling: any renew failure or SQL error immediately drops leadership and stops 
 
 Leadership can be lost while rebuilding the in-memory schedule.
 Handling: after rebuild and before executing the first attempt, re-check leadership; if lost, discard the schedule and stop.
+
+### Schedule refresh vs concurrent intent updates
+
+An intent may be inserted or updated while the leader is refreshing its schedule.
+Handling: the composite cursor `(last_modified_at, intent_id)` with ordered pagination prevents gaps; any update after the current cursor is observed on a later refresh. Duplicate observations are safe because refresh is idempotent.
 
 ### Likelihood and impact
 
@@ -199,10 +258,11 @@ mode=leader holder_id=sm-01 lease_expires_at=2026-02-02T12:00:10Z
 - lease_duration (default 60s)
 - renew_interval (default 20s; must be < lease_duration)
 - acquire_interval (default 30s)
+- schedule_refresh_interval (default 1s)
 - holder_id (default: hostname-pid-rand)
 - lease_name (default: submission-manager-executor)
 
-## Failure handling
+## Failure semantics
 
 ### Concurrent startup
 
@@ -218,7 +278,7 @@ If the old lease is expired, the instance can re-acquire; otherwise it stays fol
 
 ### SQL connectivity issues
 
-On renewal failure or SQL error:
+On renewal failure or any SQL error (including schedule refresh):
 
 - Leadership is dropped immediately.
 - Executor loop stops.
@@ -232,9 +292,18 @@ On renewal failure or SQL error:
 - Scheduling is still rebuilt from SQL on leader startup.
 - HTTP behavior and gateway interaction are unchanged.
 
+## Observable acceptance criteria
+
+- With concurrent startup, exactly one leader is elected and only that leader executes attempts.
+- On lease expiry or crash, a follower becomes leader and begins execution after acquiring the lease.
+- The leader never executes attempts without holding the lease; leadership loss stops new attempts immediately.
+- With `schedule_refresh_interval` configured and SQL healthy, a new intent inserted by a follower is observed and enqueued by the leader no later than the next refresh cycle.
+- Incremental refresh uses the composite cursor `(last_modified_at, intent_id)` and does not skip intents that share the same `last_modified_at`.
+
 ## Tests (must exist)
 
 1. Single leader on concurrent start.
 2. Failover after expiry.
 3. No execution without leadership.
 4. Leader stops executing immediately on lease loss.
+5. Leader picks up follower-submitted intents via schedule refresh.
