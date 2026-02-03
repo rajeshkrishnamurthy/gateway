@@ -9,3 +9,4 @@ This changelog records user-visible feature additions. History tracking starts o
 - SubmissionManager: added contract-level terminal webhooks with best-effort single-attempt delivery and unsigned gating via allowUnsignedWebhooks.
 - Docker Compose: added webhook-sink service for local webhook testing.
 - Dev tooling: added compose integration runner with optional UI and robustness checks.
+- Refactor: split admin-portal submission handlers and submission-manager HTTP handlers into responsibility-focused files.
