@@ -7,7 +7,7 @@ This document defines **authority boundaries, stop conditions, and behavioral co
 It is **repo-level and stable**.
 It does not change per feature or per worktree.
 
-All behavior is governed by an explicit **MODE** declared at the start of a Codex session.
+All behavior is governed by an explicit **MODE** declared at the start of each Codex session.
 
 ---
 
@@ -15,11 +15,12 @@ All behavior is governed by an explicit **MODE** declared at the start of a Code
 
 Exactly one mode must be active per Codex session:
 
-* **SPEC MODE** — deciding intent
-* **EXEC MODE** — realizing frozen intent
-* **VERIFY MODE** — challenging correctness of realized intent
+1. **SPEC MODE** — define intent
+2. **PLAN MODE** — derive execution steps
+3. **EXEC MODE** — implement
+4. **VERIFY MODE** — challenge correctness
 
-If a session’s mode is unclear, Codex must stop and ask.
+If the active mode is unclear, Codex must stop and ask.
 
 ---
 
@@ -27,7 +28,7 @@ If a session’s mode is unclear, Codex must stop and ask.
 
 1. This `AGENTS.md`
 2. Relevant spec documents in `specs/`
-3. `backend/PLANS.md` (EXEC / VERIFY only; read-only)
+3. `backend/PLANS.md` (PLAN / EXEC / VERIFY only; read-only)
 4. README for operational context
 
 ---
@@ -42,18 +43,18 @@ If a session’s mode is unclear, Codex must stop and ask.
 ### Allowed Activities
 
 * Create or edit spec documents in `specs/`
-* Define scope, non-goals, constraints, acceptance criteria
-* Surface trade-offs, risks, alternatives
-* Identify and document race conditions and failure modes
+* Define scope and non-goals
+* Define invariants and guarantees
+* Identify race conditions and concurrency semantics
+* Define failure modes
+* Define observable acceptance criteria
 
 ### Disallowed Activities (Hard Stop)
 
 * Writing or modifying production code
 * Writing or modifying tests
-* Refactoring code
+* Deriving execution steps
 * Making implementation decisions
-* Schema changes or migrations
-* Tool-driven edits that modify code
 
 ### Required Spec Checkpoints
 
@@ -70,61 +71,91 @@ All specs must explicitly include:
 
 Codex must stop if:
 
-* A decision is required
-* Ambiguity exists
-* A design choice is needed
-* Any change would go beyond documentation
+* a decision is required, but provide your clear recommendation highlighting any significant risks
+* ambiguity exists,
+* a design choice is needed,
+* behavior would be implied but not stated.
+
+---
+
+## PLAN MODE
+
+### Purpose
+
+Derive a **deterministic ExecPlan** from a frozen spec.
+
+### Authority
+
+* **Primary actor:** Codex (planner role)
+* **Human role:** Supervisor / confirmer
+
+### Inputs
+
+* Frozen spec documents (`PLAN-READY`)
+* `backend/PLANS.md` (execution discipline; read-only)
+
+### Allowed Activities
+
+* Expand spec requirements into ordered, concrete execution steps
+* Identify prerequisites and dependencies
+* Produce a single ExecPlan artifact
+
+### Disallowed Activities (Hard Stop)
+
+* Modifying specs
+* Introducing new requirements or constraints
+* Making architectural or design decisions
+* Implementing code or tests
+
+### Stop Conditions
+
+Codex must stop if:
+
+* an ExecPlan cannot be derived without making a decision,
+* multiple valid execution strategies exist,
+* the spec is insufficiently precise.
 
 ---
 
 ## EXEC MODE
 
+### Purpose
+
+Implement the frozen ExecPlan exactly.
+
 ### Authority
 
-* **Primary actor:** Codex
-* **Human role:** Supervisor / reviewer only
-* **Intent status:** Frozen
+* **Primary actor:** Codex (implementer role)
+* **Human role:** Supervisor only
 
 ### Authoritative Inputs
 
 * Frozen spec documents
-* Derived ExecPlan (once created)
+* Frozen ExecPlan
 
 These are immutable contracts during EXEC.
 
-### Role of `backend/PLANS.md`
-
-* Defines repository-wide execution discipline
-* Read-only
-* Must be followed
-* ExecPlans are **created in EXEC mode** by mechanically deriving steps from the frozen spec in accordance with this file
-
 ### Allowed Activities
 
-* Derive a single ExecPlan from the frozen spec
 * Implement code exactly as specified
 * Write implementation tests required by the ExecPlan
-* Perform mechanical, behavior-preserving refactors traceable to the spec or ExecPlan
-* Run builds and tests required to validate behavior
+* Perform mechanical, behavior-preserving refactors
+* Run builds and tests
 
 ### Disallowed Activities (Hard Stop)
 
-* Modifying specs to reinterpret or extend intent
+* Modifying specs or ExecPlan
 * Introducing new scope or requirements
 * Making architectural or design decisions
 * Resolving ambiguity by assumption
-* Editing `backend/PLANS.md`
-* Opportunistic or exploratory changes
 
 ### Stop Conditions
 
-Codex must stop immediately if:
+Codex must stop if:
 
-* A required decision is missing
-* The spec admits multiple interpretations
-* An architectural choice would be required
-* A change cannot be traced to a spec invariant
-* An ExecPlan cannot be derived without making decisions
+* a step cannot be executed as written,
+* behavior is unclear,
+* implementation requires a new decision.
 
 ---
 
@@ -132,62 +163,61 @@ Codex must stop immediately if:
 
 ### Purpose
 
-Challenge correctness, not confirm convenience.
+Challenge correctness and completeness.
 
 ### Authority
 
 * **Primary actor:** Codex (verifier role)
-* Runs in a **separate session** from implementation
+* Runs in a **separate session** from EXEC
 
 ### Use of Existing Tests
 
 * Implementation-written tests are valid inputs
-* They do **not** constitute proof of completeness
+* They are not proof of completeness
 
 ### Verification Activities
 
-* Attempt to falsify spec invariants and guarantees
-* Add adversarial tests for:
+* Attempt to falsify spec invariants
+* Add adversarial tests for edge cases, races, and failure modes
+* Use coverage to identify blind spots
 
-  * edge cases
-  * races
-  * failure modes
-  * concurrency stress
+### Coverage Rules
 
-### Verification Constraints
-
-* Must not weaken or reinterpret spec guarantees
-* Must not change implementation behavior to “make tests pass”
-* If behavior cannot be tested without interpretation → stop
-
-### Use of Coverage Metrics
-
-Coverage is a **diagnostic signal**, not a goal.
-
-Rules:
-
-* Do not add tests solely to raise coverage
+* Coverage is a diagnostic signal, not a goal
+* Tests must not be added solely to raise coverage
 * Every verification test must map to:
 
-  * a spec invariant, or
-  * a documented failure mode, or
-  * a race / concurrency condition, or
-  * a boundary implied by the spec
-* If uncovered code cannot be tested without defining behavior → stop and return to PLAN
+  * a spec invariant,
+  * a failure mode,
+  * a concurrency/race condition,
+  * or a boundary implied by the spec
 
----
+### Disallowed Activities (Hard Stop)
 
-## Session Discipline (All Modes)
+* Weakening or redefining spec guarantees
+* Changing implementation behavior to satisfy tests
+* Introducing new intent
 
-* One Codex session = one mode
-* Mode must be declared explicitly at session start
-* Derivation, implementation, verification, and review use separate sessions when non-trivial
+### Stop Conditions
+
+Codex must stop if:
+
+* behavior cannot be tested without interpretation,
+* a missing or ambiguous requirement is discovered.
 
 ---
 
 ## Global Invariant
 
-> **If correctness requires a new decision, execution must stop and authority returns to PLAN.**
+> **If correctness requires a new decision, execution must stop and authority returns to SPEC MODE.**
 
 This invariant overrides all other instructions.
+
+---
+
+## Session Discipline
+
+* One Codex session = one MODE
+* MODE must be declared explicitly at session start
+* PLAN, EXEC, and VERIFY must use separate sessions for non-trivial work
 
