@@ -12,4 +12,5 @@ This file applies to all work in this repository.
 ## Behavior
 - Treat specs as canonical for system semantics.
 - Update specs/README in the same change when behavior changes.
-- Maintain `CHANGELOG.md` at repo root for user-visible feature additions; add an entry in Unreleased or a dated section in the same change.
+- Maintain `CHANGELOG.md` at repo root for user-visible feature additions; add an entry in a dated section in the same change.
+- Always tell the user when a CHANGELOG entry is added.

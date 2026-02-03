@@ -40,6 +40,8 @@ When writing complex features or significant refactors, use an ExecPlan (as desc
 - Avoid semantic grouping that hides behavior.
 - Prefer locality over reuse.
 - Code should be easy to inline or delete.
+- Refactor only when clear conceptual boundaries are mixed (e.g., config parsing vs handlers vs UI rendering vs provider wiring vs persistence).
+- Do not refactor solely because a file is large or a LOC threshold is crossed.
 
 ## Concurrency (Strict)
 - Concurrency is suspicious by default.

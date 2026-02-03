@@ -5,57 +5,13 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 
 	"gateway/submissionmanager"
 )
 
 type apiServer struct {
 	manager *submissionmanager.Manager
-}
-
-type submitRequest struct {
-	IntentID         string          `json:"intentId"`
-	SubmissionTarget string          `json:"submissionTarget"`
-	Payload          json.RawMessage `json:"payload"`
-}
-
-const maxWaitSeconds = 30
-
-type intentResponse struct {
-	IntentID         string `json:"intentId"`
-	SubmissionTarget string `json:"submissionTarget"`
-	CreatedAt        string `json:"createdAt"`
-	Status           string `json:"status"`
-	CompletedAt      string `json:"completedAt,omitempty"`
-	RejectedReason   string `json:"rejectedReason,omitempty"`
-	ExhaustedReason  string `json:"exhaustedReason,omitempty"`
-}
-
-type intentHistoryResponse struct {
-	Intent   intentResponse    `json:"intent"`
-	Attempts []attemptResponse `json:"attempts"`
-}
-
-type attemptResponse struct {
-	AttemptNumber int    `json:"attemptNumber"`
-	StartedAt     string `json:"startedAt,omitempty"`
-	FinishedAt    string `json:"finishedAt,omitempty"`
-	OutcomeStatus string `json:"outcomeStatus,omitempty"`
-	OutcomeReason string `json:"outcomeReason,omitempty"`
-	Error         string `json:"error,omitempty"`
-}
-
-type errorResponse struct {
-	Error errorBody `json:"error"`
-}
-
-type errorBody struct {
-	Code    string            `json:"code"`
-	Message string            `json:"message"`
-	Details map[string]string `json:"details,omitempty"`
 }
 
 func handleMetrics(metrics *submissionmanager.Metrics) http.HandlerFunc {
@@ -218,87 +174,4 @@ func (s *apiServer) handleHistory(w http.ResponseWriter, r *http.Request, intent
 		Attempts: toAttemptResponses(intent.Attempts),
 	}
 	writeJSON(w, http.StatusOK, response)
-}
-
-func toIntentResponse(intent submissionmanager.Intent) intentResponse {
-	completedAt := ""
-	if intent.Status == submissionmanager.IntentAccepted ||
-		intent.Status == submissionmanager.IntentRejected ||
-		intent.Status == submissionmanager.IntentExhausted {
-		if !intent.CompletedAt.IsZero() {
-			completedAt = intent.CompletedAt.UTC().Format(timeFormat)
-		}
-	}
-
-	rejectedReason := ""
-	if intent.Status == submissionmanager.IntentRejected {
-		rejectedReason = intent.FinalOutcome.Reason
-	}
-
-	exhaustedReason := ""
-	if intent.Status == submissionmanager.IntentExhausted {
-		exhaustedReason = intent.ExhaustedReason
-	}
-
-	return intentResponse{
-		IntentID:         intent.IntentID,
-		SubmissionTarget: intent.SubmissionTarget,
-		CreatedAt:        intent.CreatedAt.UTC().Format(timeFormat),
-		Status:           string(intent.Status),
-		CompletedAt:      completedAt,
-		RejectedReason:   rejectedReason,
-		ExhaustedReason:  exhaustedReason,
-	}
-}
-
-func toAttemptResponses(attempts []submissionmanager.Attempt) []attemptResponse {
-	out := make([]attemptResponse, 0, len(attempts))
-	for _, attempt := range attempts {
-		out = append(out, attemptResponse{
-			AttemptNumber: attempt.Number,
-			StartedAt:     formatAttemptTime(attempt.StartedAt),
-			FinishedAt:    formatAttemptTime(attempt.FinishedAt),
-			OutcomeStatus: attempt.GatewayOutcome.Status,
-			OutcomeReason: attempt.GatewayOutcome.Reason,
-			Error:         attempt.Error,
-		})
-	}
-	return out
-}
-
-func formatAttemptTime(value time.Time) string {
-	if value.IsZero() {
-		return ""
-	}
-	return value.UTC().Format(timeFormat)
-}
-
-const timeFormat = time.RFC3339Nano
-
-func writeError(w http.ResponseWriter, status int, code, message string, details map[string]string) {
-	writeJSON(w, status, errorResponse{Error: errorBody{Code: code, Message: message, Details: details}})
-}
-
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
-}
-
-func parseWaitSeconds(raw string) (time.Duration, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return 0, nil
-	}
-	value, err := strconv.Atoi(raw)
-	if err != nil {
-		return 0, errors.New("waitSeconds must be a non-negative integer")
-	}
-	if value < 0 {
-		return 0, errors.New("waitSeconds must be a non-negative integer")
-	}
-	if value > maxWaitSeconds {
-		value = maxWaitSeconds
-	}
-	return time.Duration(value) * time.Second, nil
 }

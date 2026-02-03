@@ -4,8 +4,6 @@
 `cmd/push-gateway` is the HTTP entrypoint for push submission. It owns route registration, flag parsing, and provider wiring.
 
 ## Boundaries
-- Keep all `net/http` usage and UI handlers in `main.go` here.
-- Core push gateway code must remain HTTP-agnostic.
 - Do not introduce Docker/Compose assumptions into gateway code; keep runtime wiring in config or ops tooling.
 - Provider credentials are read from env in the provider switch; never from config files.
 
