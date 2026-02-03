@@ -42,7 +42,7 @@ After this change, SubmissionManager will send a best-effort HTTP callback when 
 
 ## Context and Orientation
 
-SubmissionTarget contracts are loaded and validated in `backend/submission/registry.go`, using a JSON file at `backend/conf/submission/submission_targets.json` (and the Docker variant). SubmissionManager core logic lives in `backend/submissionmanager/manager.go` and persists intents and attempts via `backend/submissionmanager/store.go` into SQL tables created by `backend/conf/sql/submissionmanager/001_create_schema.sql`. The HTTP server wiring for SubmissionManager lives under `backend/cmd/submission-manager`, and the existing gateway attempt executor is in `backend/cmd/submission-manager/executor.go`. Specs that define expected behavior live in `backend/spec/`, especially `backend/spec/submission-manager.md` and the new `backend/spec/submission-manager-webhooks.md`.
+SubmissionTarget contracts are loaded and validated in `backend/submission/registry.go`, using a JSON file at `backend/conf/submission/submission_targets.json` (and the Docker variant). SubmissionManager core logic lives in `backend/submissionmanager/manager.go` and persists intents and attempts via `backend/submissionmanager/store.go` into SQL tables created by `backend/conf/sql/submissionmanager/001_create_schema.sql`. The HTTP server wiring for SubmissionManager lives under `backend/cmd/submission-manager`, and the existing gateway attempt executor is in `backend/cmd/submission-manager/executor.go`. Specs that define expected behavior live in `specs/`, especially `specs/submission-manager.md` and the new `specs/submission-manager-webhooks.md`.
 
 In this plan, “webhook” means a single HTTP POST sent when an intent becomes accepted, rejected, or exhausted. “Best-effort” means the system will try once and may miss a callback if the process crashes or the request fails.
 
@@ -54,7 +54,7 @@ Then, extend the SQL schema to store the webhook snapshot and delivery status on
 
 Next, update `backend/submissionmanager/manager.go` to trigger a webhook send after a terminal attempt is recorded. This should be a single attempt. If a webhook is not configured or the delivery status is already set, it should do nothing. Create a new function type in submissionmanager, similar to AttemptExecutor, for webhook delivery. Wire an HTTP implementation in `backend/cmd/submission-manager` that resolves headersEnv and secretEnv from environment variables, constructs the JSON payload, signs it when a secret is present, and performs the POST. The HTTP sender should return an error for non-2xx responses so the manager can mark the attempt as failed.
 
-Finally, add tests. Extend registry tests in `backend/submission/registry_test.go` to cover webhook config validation, including the unsigned gating. Add store tests in `backend/submissionmanager/manager_test.go` or a new store test file to verify that webhook fields are persisted and loaded. Add manager tests that confirm a webhook is attempted exactly once on terminal intents and is not attempted without configuration. Update specs and README files (`backend/spec/README.md`, `backend/spec/submission-manager.md`, `backend/spec/submission-manager-webhooks.md`) plus `CHANGELOG.md` to reflect the new behavior.
+Finally, add tests. Extend registry tests in `backend/submission/registry_test.go` to cover webhook config validation, including the unsigned gating. Add store tests in `backend/submissionmanager/manager_test.go` or a new store test file to verify that webhook fields are persisted and loaded. Add manager tests that confirm a webhook is attempted exactly once on terminal intents and is not attempted without configuration. Update specs and README files (`specs/README.md`, `specs/submission-manager.md`, `specs/submission-manager-webhooks.md`) plus `CHANGELOG.md` to reflect the new behavior.
 
 ## Concrete Steps
 
@@ -62,8 +62,8 @@ Work in the repository root.
 
 1) Update specs to remove retry language and add unsigned gating. Edit:
 
-   - backend/spec/submission-manager-webhooks.md
-   - backend/spec/submission-manager.md
+   - specs/submission-manager-webhooks.md
+   - specs/submission-manager.md
 
 2) Update registry configuration and validation:
 
@@ -89,7 +89,7 @@ Work in the repository root.
 
 6) Update docs and changelog:
 
-   - backend/spec/README.md
+   - specs/README.md
    - backend/submissionmanager/README.md
    - CHANGELOG.md
 
@@ -154,5 +154,5 @@ At the end of each iteration, append a short note to this ExecPlan describing wh
 Plan created: 2026-02-02 / Codex. Future edits must update Progress, Decision Log, and Outcomes.
 
 Update note 2026-02-02: marked registry, schema/store, dispatch, and tests as complete; recorded the test timeout observation.
-Update note 2026-02-02: marked spec/README/changelog updates as complete.
+Update note 2026-02-02: marked specs/README/changelog updates as complete.
 Update note 2026-02-02: recorded final outcomes and left retries/outbox as intentional gaps.

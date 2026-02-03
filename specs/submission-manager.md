@@ -81,7 +81,7 @@ Endpoints:
   - intentId (string, required)
   - submissionTarget (string, required)
   - payload (opaque JSON, optional)
-  - Optional query parameter `waitSeconds` enables synchronous wait behavior; see `backend/spec/manager-sync-timeout.md`.
+  - Optional query parameter `waitSeconds` enables synchronous wait behavior; see `specs/manager-sync-timeout.md`.
   Response JSON includes intentId, submissionTarget, createdAt, status, completedAt (when terminal), rejectedReason (when rejected), and exhaustedReason (when exhausted). Status values are: pending, accepted, rejected, exhausted.
 - GET `/v1/intents/{intentId}` returns the current intent state or 404 if unknown.
 - GET `/v1/intents/{intentId}/history` returns the current intent state plus the ordered attempt history. The response includes an `intent` object (same shape as `/v1/intents/{intentId}`) and an `attempts` array (attemptNumber, startedAt, finishedAt, outcomeStatus, outcomeReason, error).

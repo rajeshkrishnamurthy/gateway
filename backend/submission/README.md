@@ -15,4 +15,4 @@ Key points:
 
 Use `LoadRegistry(path)` to load and validate the registry, and `Registry.ContractFor(target)` to look up a contract.
 
-See `backend/spec/submission-manager.md` for the formal contract definitions. The sample registry config lives at `backend/conf/submission/submission_targets.json`.
+See `specs/submission-manager.md` for the formal contract definitions. The sample registry config lives at `backend/conf/submission/submission_targets.json`.

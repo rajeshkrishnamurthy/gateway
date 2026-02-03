@@ -3,6 +3,10 @@
 ## Scope
 Applies to the PLAN worktree only. This worktree is for decision-making and documentation, not implementation.
 
+## Document locations
+- Plans go to `plans/`
+- Specs go to `specs/`
+
 ## Required reading order
 1) Closest AGENTS.md
 2) Relevant spec docs
