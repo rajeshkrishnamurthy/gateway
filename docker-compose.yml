@@ -132,6 +132,7 @@ services:
     ports:
       - "8080:8080"
       - "8081:8081"
+      - "8082:8082"
       - "8404:8404"
     volumes:
       - ./backend/conf/docker/haproxy_docker.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
@@ -147,11 +148,11 @@ services:
       retries: 5
       start_period: 5s
 
-  submission-manager:
+  submission-manager-1:
     <<: *go-service
     command: ["go", "run", "./cmd/submission-manager", "-addr", ":8082", "-registry", "conf/submission/submission_targets_docker.json"]
     ports:
-      - "8082:8082"
+      - "18082:8082"
     env_file:
       - ./backend/.env
     environment:
@@ -160,6 +161,26 @@ services:
       MSSQL_USER: "sa"
       MSSQL_DATABASE: "setu"
       MSSQL_ENCRYPT: "disable"
+      SM_HOLDER_ID: "sm-1"
+    depends_on:
+      - mssql
+      - haproxy
+      - webhook-sink
+
+  submission-manager-2:
+    <<: *go-service
+    command: ["go", "run", "./cmd/submission-manager", "-addr", ":8082", "-registry", "conf/submission/submission_targets_docker.json"]
+    ports:
+      - "18083:8082"
+    env_file:
+      - ./backend/.env
+    environment:
+      MSSQL_HOST: "mssql"
+      MSSQL_PORT: "1433"
+      MSSQL_USER: "sa"
+      MSSQL_DATABASE: "setu"
+      MSSQL_ENCRYPT: "disable"
+      SM_HOLDER_ID: "sm-2"
     depends_on:
       - mssql
       - haproxy

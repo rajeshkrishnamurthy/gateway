@@ -108,7 +108,7 @@ func main() {
 			}, 1)
 			require(resp.Status == "pending" || resp.Status == "rejected" || resp.Status == "exhausted", "restart submit response")
 			history := waitForAttempts(client, *managerURL, recoveryID, 1, 20*time.Second)
-			must(restartSubmissionManager(), "restart submission-manager")
+			must(restartSubmissionManagers(), "restart submission-managers")
 			must(waitReady(client, *managerURL+"/readyz", 60*time.Second), "submission-manager ready after restart")
 			history = waitForAttempts(client, *managerURL, recoveryID, 2, 30*time.Second)
 			require(len(history.Attempts) >= 2, "restart attempts >= 2")
@@ -449,11 +449,11 @@ func checkTroubleshootHistory(client *http.Client, adminURL, intentID string) er
 	return nil
 }
 
-func restartSubmissionManager() error {
-	cmd := exec.Command("docker", "compose", "restart", "submission-manager")
+func restartSubmissionManagers() error {
+	cmd := exec.Command("docker", "compose", "restart", "submission-manager-1", "submission-manager-2")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("restart submission-manager: %v output=%s", err, string(out))
+		return fmt.Errorf("restart submission-managers: %v output=%s", err, string(out))
 	}
 	return nil
 }

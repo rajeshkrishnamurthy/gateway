@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"gateway/submissionmanager"
 )
@@ -38,13 +40,23 @@ func handleHealthz(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("ok"))
 }
 
-func handleReadyz(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
+func handleReadyz(statusFn func() submissionmanager.LeaseStatus) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		status := submissionmanager.LeaseStatus{Mode: "follower"}
+		if statusFn != nil {
+			status = statusFn()
+		}
+		body := fmt.Sprintf("mode=%s holder_id=%s", status.Mode, status.HolderID)
+		if status.Mode == "leader" && !status.ExpiresAt.IsZero() {
+			body = fmt.Sprintf("%s lease_expires_at=%s", body, status.ExpiresAt.UTC().Format(time.RFC3339Nano))
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(body))
 	}
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ok"))
 }
 
 func (s *apiServer) handleSubmit(w http.ResponseWriter, r *http.Request) {

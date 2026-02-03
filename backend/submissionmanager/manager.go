@@ -101,6 +101,11 @@ type Manager struct {
 	queue         attemptQueue
 	wake          chan struct{}
 	nextSeq       int
+	scheduled     map[string]time.Time
+	leader        bool
+	leaseFence    LeaseFence
+	leaseLossFn   func()
+	scheduleNow   func(context.Context) (time.Time, error)
 	metrics       *Metrics
 	webhookSender WebhookSender
 }
@@ -149,25 +154,15 @@ func NewManager(reg submission.Registry, exec AttemptExecutor, clock Clock, db *
 	}
 
 	manager := &Manager{
-		reg:   reg,
-		exec:  exec,
-		store: store,
-		clock: clock,
-		wake:  make(chan struct{}, 1),
+		reg:         reg,
+		exec:        exec,
+		store:       store,
+		clock:       clock,
+		wake:        make(chan struct{}, 1),
+		scheduled:   make(map[string]time.Time),
+		scheduleNow: store.loadSQLTime,
 	}
 	heap.Init(&manager.queue)
-	scheduled, err := store.loadPendingSchedule(context.Background())
-	if err != nil {
-		return nil, err
-	}
-	for _, item := range scheduled {
-		manager.nextSeq++
-		heap.Push(&manager.queue, scheduledAttempt{
-			intentID: item.intentID,
-			due:      item.due,
-			seq:      manager.nextSeq,
-		})
-	}
 	return manager, nil
 }
 
@@ -178,7 +173,7 @@ func (m *Manager) SetMetrics(metrics *Metrics) {
 	}
 	m.mu.Lock()
 	m.metrics = metrics
-	depth := len(m.queue.items)
+	depth := len(m.scheduled)
 	m.mu.Unlock()
 	if metrics != nil {
 		metrics.SetQueueDepth(depth)
@@ -193,6 +188,13 @@ func (m *Manager) SetWebhookSender(sender WebhookSender) {
 	m.mu.Lock()
 	m.webhookSender = sender
 	m.mu.Unlock()
+}
+
+func (m *Manager) scheduleTimeNow(ctx context.Context) (time.Time, error) {
+	if m.scheduleNow == nil {
+		return time.Time{}, errors.New("schedule time source is required")
+	}
+	return m.scheduleNow(ctx)
 }
 
 // SubmitIntent registers an intent and schedules its first attempt.
@@ -240,7 +242,9 @@ func (m *Manager) SubmitIntent(ctx context.Context, intent Intent) (Intent, erro
 		if m.metrics != nil {
 			m.metrics.ObserveIntentCreated()
 		}
-		m.enqueueAttempt(intentID, createdAt)
+		if m.isLeader() {
+			m.enqueueAttempt(intentID, createdAt)
+		}
 	} else if m.metrics != nil {
 		m.metrics.ObserveIdempotentHit()
 	}

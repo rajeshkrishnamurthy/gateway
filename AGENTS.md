@@ -62,3 +62,46 @@ Codex must stop immediately and report if:
 - No intent drift.
 - No silent assumptions.
 
+## Testing Roles in EXEC
+
+### Implementation Tests (EXEC-IMPLEMENT)
+- Tests may be written during implementation as specified by the ExecPlan.
+- These tests validate that the implementation meets the explicit requirements of the spec.
+- Implementation tests may assume the correctness of stated invariants.
+
+Purpose:
+- Enable rapid feedback.
+- Ensure the implementation conforms to the frozen intent.
+
+### Verification Tests (EXEC-VERIFY)
+- Verification runs in a separate Codex session from implementation.
+- Verification treats existing tests as inputs, not as proof of completeness.
+- The verifier must attempt to falsify spec invariants and guarantees.
+- New tests may be added to cover edge cases, races, and failure modes.
+
+Verifier constraints:
+- Verification must not weaken or reinterpret spec guarantees.
+- Verification must not modify implementation behavior to “make tests pass”.
+- If behavior cannot be tested without interpretation, execution must stop.
+
+Escalation rule:
+- Gaps discovered during verification indicate missing or ambiguous intent.
+- Such gaps require a return to PLAN for clarification.
+
+### Use of Coverage Metrics
+
+Coverage metrics may be used as a diagnostic tool to identify untested areas,
+but they must never be treated as a goal.
+
+Rules:
+- Verification must not add tests solely to increase coverage percentages.
+- Every verification test must be justified by at least one of:
+  - a spec invariant,
+  - a documented failure mode,
+  - a concurrency or race condition,
+  - a boundary condition explicitly implied by the spec.
+- If uncovered code cannot be tested without defining new behavior,
+  verification must stop and report missing or ambiguous intent.
+
+Coverage is a signal for investigation, not a success criterion.
+

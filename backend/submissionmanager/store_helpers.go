@@ -1,6 +1,7 @@
 package submissionmanager
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"errors"
@@ -48,4 +49,16 @@ func isUniqueViolation(err error) bool {
 		return false
 	}
 	return mssqlErr.Number == 2627 || mssqlErr.Number == 2601
+}
+
+func (s *sqlStore) loadSQLTime(ctx context.Context) (time.Time, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	row := s.db.QueryRowContext(ctx, `SELECT SYSUTCDATETIME()`)
+	var now time.Time
+	if err := row.Scan(&now); err != nil {
+		return time.Time{}, err
+	}
+	return normalizeDBTime(now), nil
 }

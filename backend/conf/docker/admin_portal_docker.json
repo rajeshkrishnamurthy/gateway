@@ -3,7 +3,7 @@
   "title": "Setu Admin Portal",
   "smsGatewayUrl": "http://haproxy:8080",
   "pushGatewayUrl": "http://haproxy:8081",
-  "submissionManagerUrl": "http://submission-manager:8082",
+  "submissionManagerUrl": "http://haproxy:8082",
   "submissionManagerDashboardUrl": "http://localhost:3000/d/submission-manager-overview?kiosk=tv",
   "smsSubmissionTarget": "sms.realtime",
   "pushSubmissionTarget": "push.realtime",

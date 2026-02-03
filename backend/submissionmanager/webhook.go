@@ -20,16 +20,35 @@ func (m *Manager) dispatchWebhook(ctx context.Context, intent Intent, occurredAt
 	if intent.WebhookStatus != webhookPending {
 		return
 	}
+	fence, ok := m.currentFence()
+	if !ok {
+		return
+	}
 	delivery, err := buildWebhookDelivery(intent, occurredAt)
 	if err != nil {
-		_ = m.store.recordWebhookAttempt(ctx, intent.IntentID, webhookFailed, occurredAt, err.Error())
+		applied, err := m.store.recordWebhookAttempt(ctx, fence, intent.IntentID, webhookFailed, occurredAt, err.Error())
+		if err != nil || !applied {
+			if ctx == nil || ctx.Err() == nil {
+				m.notifyLeaseLoss()
+			}
+		}
 		return
 	}
 	if err := m.webhookSender(ctx, delivery); err != nil {
-		_ = m.store.recordWebhookAttempt(ctx, intent.IntentID, webhookFailed, occurredAt, err.Error())
+		applied, err := m.store.recordWebhookAttempt(ctx, fence, intent.IntentID, webhookFailed, occurredAt, err.Error())
+		if err != nil || !applied {
+			if ctx == nil || ctx.Err() == nil {
+				m.notifyLeaseLoss()
+			}
+		}
 		return
 	}
-	_ = m.store.recordWebhookAttempt(ctx, intent.IntentID, webhookDelivered, occurredAt, "")
+	applied, err := m.store.recordWebhookAttempt(ctx, fence, intent.IntentID, webhookDelivered, occurredAt, "")
+	if err != nil || !applied {
+		if ctx == nil || ctx.Err() == nil {
+			m.notifyLeaseLoss()
+		}
+	}
 }
 
 func buildWebhookDelivery(intent Intent, occurredAt time.Time) (WebhookDelivery, error) {

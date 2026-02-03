@@ -30,7 +30,20 @@ BEGIN
     attempt_count INT NOT NULL DEFAULT 0,
     created_at DATETIME2(7) NOT NULL,
     updated_at DATETIME2(7) NOT NULL,
+    last_modified_at DATETIME2(7) NOT NULL,
     next_attempt_at DATETIME2(7) NULL
+  );
+END;
+
+IF OBJECT_ID('dbo.submission_manager_leases', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.submission_manager_leases (
+    lease_name NVARCHAR(64) NOT NULL PRIMARY KEY,
+    holder_id NVARCHAR(128) NOT NULL,
+    lease_epoch BIGINT NOT NULL,
+    acquired_at DATETIME2(7) NOT NULL,
+    renewed_at DATETIME2(7) NOT NULL,
+    expires_at DATETIME2(7) NOT NULL
   );
 END;
 
@@ -77,6 +90,13 @@ END;
 IF COL_LENGTH('dbo.submission_intents', 'webhook_error') IS NULL
 BEGIN
   ALTER TABLE dbo.submission_intents ADD webhook_error NVARCHAR(512) NULL;
+END;
+
+IF COL_LENGTH('dbo.submission_intents', 'last_modified_at') IS NULL
+BEGIN
+  ALTER TABLE dbo.submission_intents
+    ADD last_modified_at DATETIME2(7) NOT NULL
+      CONSTRAINT DF_submission_intents_last_modified_at DEFAULT SYSUTCDATETIME();
 END;
 
 IF OBJECT_ID('dbo.submission_attempts', 'U') IS NULL
