@@ -11,6 +11,7 @@ Key points:
 - terminalOutcomes are gateway-reported outcomes treated as terminal by the contract.
 - maxAcceptanceSeconds is a cumulative wall-clock bound across all attempts when policy is `deadline`.
 - maxAttempts is required when policy is `max_attempts`.
+- webhook config is optional and lives on the submissionTarget contract; unsigned webhooks require explicit allowUnsignedWebhooks in the registry file.
 
 Use `LoadRegistry(path)` to load and validate the registry, and `Registry.ContractFor(target)` to look up a contract.
 

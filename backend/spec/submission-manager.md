@@ -102,6 +102,11 @@ SubmissionManager exposes a history fragment endpoint at `/ui/history`. It accep
 The registry is a JSON config that defines contracts for each submissionTarget. It binds each submissionTarget to a gatewayType and a gatewayUrl (HAProxy frontend) and captures contract constraints.
 
 The registry is the single source of truth for submissionTarget to gatewayType binding.
+Unsigned webhooks are rejected unless the registry enables an explicit allowUnsignedWebhooks flag (non-production only).
+
+Top-level registry fields:
+
+- allowUnsignedWebhooks (optional, default false): permits webhook configs without secretEnv for non-production use.
 
 ## Contract Fields
 
@@ -114,6 +119,7 @@ Each registry entry defines:
 - maxAcceptanceSeconds: required when policy is `deadline`
 - maxAttempts: required when policy is `max_attempts`
 - terminalOutcomes: required list of gateway-reported outcomes that this contract treats as terminal
+- webhook: optional terminal-status webhook config (see `submission-manager-webhooks.md`); secrets are referenced via env vars, not stored inline
 
 Notes:
 

@@ -53,6 +53,18 @@ services:
       retries: 5
       start_period: 5s
 
+  webhook-sink:
+    <<: *go-service
+    command: ["go", "run", "./cmd/fake-provider/webhooksink", "-addr", ":9999"]
+    ports:
+      - "9999:9999"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9999/readyz"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+
   sms-gateway-1:
     <<: *go-service
     command: ["go", "run", "./cmd/sms-gateway", "-config", "conf/docker/config_docker.json", "-addr", ":8080"]
@@ -151,6 +163,7 @@ services:
     depends_on:
       - mssql
       - haproxy
+      - webhook-sink
 
   admin-portal:
     <<: *go-service

@@ -1,6 +1,8 @@
 # SubmissionTarget registry for Docker Compose.
 # Full-line # comments are allowed; inline comments are not.
+# allowUnsignedWebhooks must remain false in enterprise deployments.
 {
+  "allowUnsignedWebhooks": true,
   "targets": [
     {
       "submissionTarget": "sms.realtime",

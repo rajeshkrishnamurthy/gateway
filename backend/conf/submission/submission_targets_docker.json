@@ -1,6 +1,8 @@
 # SubmissionTarget registry for Docker Compose.
 # Full-line # comments are allowed; inline comments are not.
+# allowUnsignedWebhooks must remain false in enterprise deployments.
 {
+  "allowUnsignedWebhooks": true,
   "targets": [
     {
       "submissionTarget": "sms.realtime",
@@ -8,7 +10,10 @@
       "gatewayUrl": "http://haproxy:8080",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
-      "terminalOutcomes": ["invalid_request", "invalid_recipient", "invalid_message"]
+      "terminalOutcomes": ["invalid_request", "invalid_recipient", "invalid_message"],
+      "webhook": {
+        "url": "http://webhook-sink:9999/webhook"
+      }
     },
     {
       "submissionTarget": "push.realtime",
@@ -16,7 +21,10 @@
       "gatewayUrl": "http://haproxy:8081",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
-      "terminalOutcomes": ["invalid_request", "unregistered_token"]
+      "terminalOutcomes": ["invalid_request", "unregistered_token"],
+      "webhook": {
+        "url": "http://webhook-sink:9999/webhook"
+      }
     }
   ]
 }

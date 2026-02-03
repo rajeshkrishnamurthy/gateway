@@ -14,6 +14,14 @@ BEGIN
     max_acceptance_seconds INT NULL,
     max_attempts INT NULL,
     terminal_outcomes NVARCHAR(MAX) NOT NULL,
+    webhook_url NVARCHAR(512) NULL,
+    webhook_headers NVARCHAR(MAX) NULL,
+    webhook_headers_env NVARCHAR(MAX) NULL,
+    webhook_secret_env NVARCHAR(256) NULL,
+    webhook_status NVARCHAR(32) NULL,
+    webhook_attempted_at DATETIME2(7) NULL,
+    webhook_delivered_at DATETIME2(7) NULL,
+    webhook_error NVARCHAR(512) NULL,
     status NVARCHAR(32) NOT NULL,
     final_outcome_status NVARCHAR(32) NULL,
     final_outcome_reason NVARCHAR(64) NULL,
@@ -29,6 +37,46 @@ END;
 IF COL_LENGTH('dbo.submission_intents', 'mode') IS NOT NULL
 BEGIN
   ALTER TABLE dbo.submission_intents DROP COLUMN mode;
+END;
+
+IF COL_LENGTH('dbo.submission_intents', 'webhook_url') IS NULL
+BEGIN
+  ALTER TABLE dbo.submission_intents ADD webhook_url NVARCHAR(512) NULL;
+END;
+
+IF COL_LENGTH('dbo.submission_intents', 'webhook_headers') IS NULL
+BEGIN
+  ALTER TABLE dbo.submission_intents ADD webhook_headers NVARCHAR(MAX) NULL;
+END;
+
+IF COL_LENGTH('dbo.submission_intents', 'webhook_headers_env') IS NULL
+BEGIN
+  ALTER TABLE dbo.submission_intents ADD webhook_headers_env NVARCHAR(MAX) NULL;
+END;
+
+IF COL_LENGTH('dbo.submission_intents', 'webhook_secret_env') IS NULL
+BEGIN
+  ALTER TABLE dbo.submission_intents ADD webhook_secret_env NVARCHAR(256) NULL;
+END;
+
+IF COL_LENGTH('dbo.submission_intents', 'webhook_status') IS NULL
+BEGIN
+  ALTER TABLE dbo.submission_intents ADD webhook_status NVARCHAR(32) NULL;
+END;
+
+IF COL_LENGTH('dbo.submission_intents', 'webhook_attempted_at') IS NULL
+BEGIN
+  ALTER TABLE dbo.submission_intents ADD webhook_attempted_at DATETIME2(7) NULL;
+END;
+
+IF COL_LENGTH('dbo.submission_intents', 'webhook_delivered_at') IS NULL
+BEGIN
+  ALTER TABLE dbo.submission_intents ADD webhook_delivered_at DATETIME2(7) NULL;
+END;
+
+IF COL_LENGTH('dbo.submission_intents', 'webhook_error') IS NULL
+BEGIN
+  ALTER TABLE dbo.submission_intents ADD webhook_error NVARCHAR(512) NULL;
 END;
 
 IF OBJECT_ID('dbo.submission_attempts', 'U') IS NULL

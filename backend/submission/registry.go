@@ -50,6 +50,7 @@ type TargetContract struct {
 	// submission contract, must immediately complete the intent without
 	// further attempts.
 	TerminalOutcomes []string
+	Webhook          *WebhookConfig
 }
 
 // Registry maps submissionTarget identifiers to validated TargetContracts.
@@ -58,17 +59,35 @@ type Registry struct {
 }
 
 type fileConfig struct {
-	Targets []targetConfig `json:"targets"`
+	// Non-obvious constraint: unsigned webhooks are rejected unless this is true.
+	AllowUnsignedWebhooks bool           `json:"allowUnsignedWebhooks"`
+	Targets               []targetConfig `json:"targets"`
 }
 
 type targetConfig struct {
-	SubmissionTarget     string   `json:"submissionTarget"`
-	GatewayType          string   `json:"gatewayType"`
-	GatewayURL           string   `json:"gatewayUrl"`
-	Policy               string   `json:"policy"`
-	MaxAcceptanceSeconds int      `json:"maxAcceptanceSeconds"`
-	MaxAttempts          int      `json:"maxAttempts"`
-	TerminalOutcomes     []string `json:"terminalOutcomes"`
+	SubmissionTarget     string         `json:"submissionTarget"`
+	GatewayType          string         `json:"gatewayType"`
+	GatewayURL           string         `json:"gatewayUrl"`
+	Policy               string         `json:"policy"`
+	MaxAcceptanceSeconds int            `json:"maxAcceptanceSeconds"`
+	MaxAttempts          int            `json:"maxAttempts"`
+	TerminalOutcomes     []string       `json:"terminalOutcomes"`
+	Webhook              *webhookConfig `json:"webhook"`
+}
+
+// WebhookConfig defines the terminal webhook callback for a submissionTarget.
+type WebhookConfig struct {
+	URL        string
+	Headers    map[string]string
+	HeadersEnv map[string]string
+	SecretEnv  string
+}
+
+type webhookConfig struct {
+	URL        string            `json:"url"`
+	Headers    map[string]string `json:"headers"`
+	HeadersEnv map[string]string `json:"headersEnv"`
+	SecretEnv  string            `json:"secretEnv"`
 }
 
 var allowedOutcomes = map[GatewayType]map[string]struct{}{
@@ -253,6 +272,11 @@ func buildRegistry(cfg fileConfig) (Registry, error) {
 			outcomes = append(outcomes, trimmed)
 		}
 
+		webhook, err := validateWebhook(target.Webhook, cfg.AllowUnsignedWebhooks, i)
+		if err != nil {
+			return Registry{}, err
+		}
+
 		registry.Targets[submissionTarget] = TargetContract{
 			SubmissionTarget:     submissionTarget,
 			GatewayType:          gatewayType,
@@ -261,6 +285,7 @@ func buildRegistry(cfg fileConfig) (Registry, error) {
 			MaxAcceptanceSeconds: target.MaxAcceptanceSeconds,
 			MaxAttempts:          target.MaxAttempts,
 			TerminalOutcomes:     outcomes,
+			Webhook:              webhook,
 		}
 	}
 
@@ -279,4 +304,84 @@ func validateGatewayURL(raw string) error {
 		return errors.New("must include host")
 	}
 	return nil
+}
+
+func validateWebhook(cfg *webhookConfig, allowUnsigned bool, idx int) (*WebhookConfig, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+
+	urlValue := strings.TrimSpace(cfg.URL)
+	if urlValue == "" {
+		return nil, fmt.Errorf("targets[%d].webhook.url is required", idx)
+	}
+	if err := validateWebhookURL(urlValue); err != nil {
+		return nil, fmt.Errorf("targets[%d].webhook.url %v", idx, err)
+	}
+
+	headers, err := normalizeHeaderMap(cfg.Headers, fmt.Sprintf("targets[%d].webhook.headers", idx))
+	if err != nil {
+		return nil, err
+	}
+	headersEnv, err := normalizeHeaderMap(cfg.HeadersEnv, fmt.Sprintf("targets[%d].webhook.headersEnv", idx))
+	if err != nil {
+		return nil, err
+	}
+
+	if len(headers) > 0 && len(headersEnv) > 0 {
+		for name := range headers {
+			if _, exists := headersEnv[name]; exists {
+				return nil, fmt.Errorf("targets[%d].webhook header %q cannot be in both headers and headersEnv", idx, name)
+			}
+		}
+	}
+
+	secretEnv := strings.TrimSpace(cfg.SecretEnv)
+	if secretEnv == "" && !allowUnsigned {
+		// Non-obvious constraint: unsigned webhooks require explicit opt-in.
+		return nil, fmt.Errorf("targets[%d].webhook.secretEnv is required unless allowUnsignedWebhooks is true", idx)
+	}
+
+	return &WebhookConfig{
+		URL:        urlValue,
+		Headers:    headers,
+		HeadersEnv: headersEnv,
+		SecretEnv:  secretEnv,
+	}, nil
+}
+
+func validateWebhookURL(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return errors.New("must be a valid URL")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return errors.New("must use http or https")
+	}
+	if parsed.Host == "" {
+		return errors.New("must include host")
+	}
+	return nil
+}
+
+func normalizeHeaderMap(input map[string]string, field string) (map[string]string, error) {
+	if len(input) == 0 {
+		return nil, nil
+	}
+	normalized := make(map[string]string, len(input))
+	for name, value := range input {
+		trimmedName := strings.TrimSpace(name)
+		if trimmedName == "" {
+			return nil, fmt.Errorf("%s must not include empty header names", field)
+		}
+		trimmedValue := strings.TrimSpace(value)
+		if trimmedValue == "" {
+			return nil, fmt.Errorf("%s must not include empty values for header %q", field, trimmedName)
+		}
+		if _, exists := normalized[trimmedName]; exists {
+			return nil, fmt.Errorf("%s contains duplicate header %q", field, trimmedName)
+		}
+		normalized[trimmedName] = trimmedValue
+	}
+	return normalized, nil
 }

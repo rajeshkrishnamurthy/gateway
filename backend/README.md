@@ -65,6 +65,17 @@ docker compose up -d
 
 The compose service uses `conf/submission/submission_targets_docker.json` so the manager reaches HAProxy by service name.
 
+Compose integration checks (dev only):
+
+```sh
+go run ./cmd/compose-integration
+```
+
+Optional flags:
+
+- `-run-admin` exercises the Admin Portal send and troubleshoot flows.
+- `-restart-manager` restarts the submission-manager container during the recovery check.
+
 Smoke test (HTTP):
 
 ```sh

@@ -81,6 +81,24 @@ type stubExecutor struct {
 	clock   *fakeClock
 }
 
+type stubWebhookSender struct {
+	err   error
+	calls chan WebhookDelivery
+}
+
+func newStubWebhookSender(err error) *stubWebhookSender {
+	return &stubWebhookSender{
+		err:   err,
+		calls: make(chan WebhookDelivery, 10),
+	}
+}
+
+func (s *stubWebhookSender) Send(ctx context.Context, delivery WebhookDelivery) error {
+	_ = ctx
+	s.calls <- delivery
+	return s.err
+}
+
 func newStubExecutor(clock *fakeClock, results []execResult) *stubExecutor {
 	return &stubExecutor{
 		results: results,
@@ -122,6 +140,26 @@ func assertNoCall(t *testing.T, calls <-chan AttemptInput) {
 	select {
 	case <-calls:
 		t.Fatalf("unexpected executor call")
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func waitForWebhook(t *testing.T, calls <-chan WebhookDelivery) WebhookDelivery {
+	t.Helper()
+	select {
+	case delivery := <-calls:
+		return delivery
+	case <-time.After(2 * time.Second):
+		t.Fatalf("webhook was not called")
+	}
+	return WebhookDelivery{}
+}
+
+func assertNoWebhook(t *testing.T, calls <-chan WebhookDelivery) {
+	t.Helper()
+	select {
+	case <-calls:
+		t.Fatalf("unexpected webhook call")
 	case <-time.After(100 * time.Millisecond):
 	}
 }
@@ -180,6 +218,13 @@ func newManager(t *testing.T, reg submission.Registry, exec AttemptExecutor, clo
 	return manager
 }
 
+func contractWithWebhook(contract submission.TargetContract) submission.TargetContract {
+	contract.Webhook = &submission.WebhookConfig{
+		URL: "http://webhook",
+	}
+	return contract
+}
+
 func startManager(t *testing.T, manager *Manager) (context.Context, context.CancelFunc, chan struct{}) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -232,6 +277,68 @@ func TestSubmitIntentIdempotency(t *testing.T) {
 	if conflict.ExistingPayload == conflict.IncomingPayload {
 		t.Fatalf("expected conflicting payloads to differ")
 	}
+}
+
+func TestTerminalIntentDispatchesWebhook(t *testing.T) {
+	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
+	contract := contractWithWebhook(baseContract(submission.PolicyOneShot))
+	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
+	stub := newStubExecutor(clock, []execResult{{outcome: GatewayOutcome{Status: gatewayAccepted}}})
+	manager := newManager(t, reg, stub.Exec, clock, db)
+	webhook := newStubWebhookSender(nil)
+	manager.SetWebhookSender(webhook.Send)
+
+	intent := Intent{
+		IntentID:         "intent-1",
+		SubmissionTarget: contract.SubmissionTarget,
+		Payload:          []byte(`{"a":1}`),
+	}
+	if _, err := manager.SubmitIntent(context.Background(), intent); err != nil {
+		t.Fatalf("submit intent: %v", err)
+	}
+
+	ctx, cancel, done := startManager(t, manager)
+	waitForStatus(t, manager, intent.IntentID, IntentAccepted)
+	cancel()
+	_ = ctx
+	<-done
+
+	delivery := waitForWebhook(t, webhook.calls)
+	if delivery.URL != "http://webhook" {
+		t.Fatalf("expected webhook url, got %q", delivery.URL)
+	}
+	if string(delivery.Body) == "" {
+		t.Fatalf("expected webhook body")
+	}
+}
+
+func TestTerminalIntentWithoutWebhookDoesNotDispatch(t *testing.T) {
+	clock := newFakeClock(time.Unix(0, 0))
+	db := newTestDB(t)
+	contract := baseContract(submission.PolicyOneShot)
+	reg := submission.Registry{Targets: map[string]submission.TargetContract{contract.SubmissionTarget: contract}}
+	stub := newStubExecutor(clock, []execResult{{outcome: GatewayOutcome{Status: gatewayAccepted}}})
+	manager := newManager(t, reg, stub.Exec, clock, db)
+	webhook := newStubWebhookSender(nil)
+	manager.SetWebhookSender(webhook.Send)
+
+	intent := Intent{
+		IntentID:         "intent-1",
+		SubmissionTarget: contract.SubmissionTarget,
+		Payload:          []byte(`{"a":1}`),
+	}
+	if _, err := manager.SubmitIntent(context.Background(), intent); err != nil {
+		t.Fatalf("submit intent: %v", err)
+	}
+
+	ctx, cancel, done := startManager(t, manager)
+	waitForStatus(t, manager, intent.IntentID, IntentAccepted)
+	cancel()
+	_ = ctx
+	<-done
+
+	assertNoWebhook(t, webhook.calls)
 }
 
 func TestIdempotencyAcrossRestart(t *testing.T) {

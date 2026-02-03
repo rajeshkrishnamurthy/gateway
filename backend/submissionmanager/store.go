@@ -31,6 +31,28 @@ func (s *sqlStore) insertIntent(ctx context.Context, intent Intent, payloadHash 
 	if err != nil {
 		return Intent{}, false, err
 	}
+	webhookURL := ""
+	webhookSecretEnv := ""
+	var webhookHeadersJSON []byte
+	var webhookHeadersEnvJSON []byte
+	webhookStatus := ""
+	if intent.Contract.Webhook != nil {
+		webhookURL = intent.Contract.Webhook.URL
+		webhookSecretEnv = intent.Contract.Webhook.SecretEnv
+		if len(intent.Contract.Webhook.Headers) > 0 {
+			webhookHeadersJSON, err = json.Marshal(intent.Contract.Webhook.Headers)
+			if err != nil {
+				return Intent{}, false, err
+			}
+		}
+		if len(intent.Contract.Webhook.HeadersEnv) > 0 {
+			webhookHeadersEnvJSON, err = json.Marshal(intent.Contract.Webhook.HeadersEnv)
+			if err != nil {
+				return Intent{}, false, err
+			}
+		}
+		webhookStatus = webhookPending
+	}
 	now = now.UTC()
 
 	_, err = s.db.ExecContext(
@@ -46,6 +68,14 @@ func (s *sqlStore) insertIntent(ctx context.Context, intent Intent, payloadHash 
       max_acceptance_seconds,
       max_attempts,
       terminal_outcomes,
+      webhook_url,
+      webhook_headers,
+      webhook_headers_env,
+      webhook_secret_env,
+      webhook_status,
+      webhook_attempted_at,
+      webhook_delivered_at,
+      webhook_error,
       status,
       final_outcome_status,
       final_outcome_reason,
@@ -55,7 +85,7 @@ func (s *sqlStore) insertIntent(ctx context.Context, intent Intent, payloadHash 
       updated_at,
       next_attempt_at
     ) VALUES (
-      @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15, @p16, @p17, @p18
+      @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15, @p16, @p17, @p18, @p19, @p20, @p21, @p22, @p23, @p24, @p25, @p26
     )`,
 		intent.IntentID,
 		intent.SubmissionTarget,
@@ -67,6 +97,14 @@ func (s *sqlStore) insertIntent(ctx context.Context, intent Intent, payloadHash 
 		nullInt(intent.Contract.MaxAcceptanceSeconds),
 		nullInt(intent.Contract.MaxAttempts),
 		string(terminalOutcomes),
+		nullString(webhookURL),
+		nullString(string(webhookHeadersJSON)),
+		nullString(string(webhookHeadersEnvJSON)),
+		nullString(webhookSecretEnv),
+		nullString(webhookStatus),
+		sql.NullTime{},
+		sql.NullTime{},
+		nullString(""),
 		string(IntentPending),
 		nullString(""),
 		nullString(""),
@@ -133,6 +171,14 @@ func (s *sqlStore) loadIntentForExecution(ctx context.Context, intentID string, 
       max_acceptance_seconds,
       max_attempts,
       terminal_outcomes,
+      webhook_url,
+      webhook_headers,
+      webhook_headers_env,
+      webhook_secret_env,
+      webhook_status,
+      webhook_attempted_at,
+      webhook_delivered_at,
+      webhook_error,
       status,
       final_outcome_status,
       final_outcome_reason,
@@ -170,6 +216,14 @@ func (s *sqlStore) loadIntentRow(ctx context.Context, intentID string) (Intent, 
       max_acceptance_seconds,
       max_attempts,
       terminal_outcomes,
+      webhook_url,
+      webhook_headers,
+      webhook_headers_env,
+      webhook_secret_env,
+      webhook_status,
+      webhook_attempted_at,
+      webhook_delivered_at,
+      webhook_error,
       status,
       final_outcome_status,
       final_outcome_reason,
@@ -187,23 +241,31 @@ func (s *sqlStore) loadIntentRow(ctx context.Context, intentID string) (Intent, 
 
 func (s *sqlStore) scanIntentRow(row *sql.Row) (Intent, int, bool, error) {
 	var (
-		storedIntentID       string
-		submissionTarget     string
-		payload              []byte
-		gatewayType          string
-		gatewayURL           string
-		policy               string
-		maxAcceptanceSeconds sql.NullInt32
-		maxAttempts          sql.NullInt32
-		terminalOutcomesJSON string
-		status               string
-		finalOutcomeStatus   sql.NullString
-		finalOutcomeReason   sql.NullString
-		exhaustedReason      sql.NullString
-		attemptCount         int
-		createdAt            time.Time
-		updatedAt            time.Time
-		nextAttemptAt        sql.NullTime
+		storedIntentID        string
+		submissionTarget      string
+		payload               []byte
+		gatewayType           string
+		gatewayURL            string
+		policy                string
+		maxAcceptanceSeconds  sql.NullInt32
+		maxAttempts           sql.NullInt32
+		terminalOutcomesJSON  string
+		webhookURL            sql.NullString
+		webhookHeadersJSON    sql.NullString
+		webhookHeadersEnvJSON sql.NullString
+		webhookSecretEnv      sql.NullString
+		webhookStatus         sql.NullString
+		webhookAttemptedAt    sql.NullTime
+		webhookDeliveredAt    sql.NullTime
+		webhookError          sql.NullString
+		status                string
+		finalOutcomeStatus    sql.NullString
+		finalOutcomeReason    sql.NullString
+		exhaustedReason       sql.NullString
+		attemptCount          int
+		createdAt             time.Time
+		updatedAt             time.Time
+		nextAttemptAt         sql.NullTime
 	)
 
 	if err := row.Scan(
@@ -216,6 +278,14 @@ func (s *sqlStore) scanIntentRow(row *sql.Row) (Intent, int, bool, error) {
 		&maxAcceptanceSeconds,
 		&maxAttempts,
 		&terminalOutcomesJSON,
+		&webhookURL,
+		&webhookHeadersJSON,
+		&webhookHeadersEnvJSON,
+		&webhookSecretEnv,
+		&webhookStatus,
+		&webhookAttemptedAt,
+		&webhookDeliveredAt,
+		&webhookError,
 		&status,
 		&finalOutcomeStatus,
 		&finalOutcomeReason,
@@ -235,6 +305,27 @@ func (s *sqlStore) scanIntentRow(row *sql.Row) (Intent, int, bool, error) {
 	if err := json.Unmarshal([]byte(terminalOutcomesJSON), &terminalOutcomes); err != nil {
 		return Intent{}, 0, false, err
 	}
+	var webhook *submission.WebhookConfig
+	if webhookURL.Valid {
+		webhook = &submission.WebhookConfig{
+			URL:       webhookURL.String,
+			SecretEnv: webhookSecretEnv.String,
+		}
+		if webhookHeadersJSON.Valid && strings.TrimSpace(webhookHeadersJSON.String) != "" {
+			var headers map[string]string
+			if err := json.Unmarshal([]byte(webhookHeadersJSON.String), &headers); err != nil {
+				return Intent{}, 0, false, err
+			}
+			webhook.Headers = headers
+		}
+		if webhookHeadersEnvJSON.Valid && strings.TrimSpace(webhookHeadersEnvJSON.String) != "" {
+			var headersEnv map[string]string
+			if err := json.Unmarshal([]byte(webhookHeadersEnvJSON.String), &headersEnv); err != nil {
+				return Intent{}, 0, false, err
+			}
+			webhook.HeadersEnv = headersEnv
+		}
+	}
 
 	intent := Intent{
 		IntentID:         storedIntentID,
@@ -250,12 +341,21 @@ func (s *sqlStore) scanIntentRow(row *sql.Row) (Intent, int, bool, error) {
 			MaxAcceptanceSeconds: int(maxAcceptanceSeconds.Int32),
 			MaxAttempts:          int(maxAttempts.Int32),
 			TerminalOutcomes:     terminalOutcomes,
+			Webhook:              webhook,
 		},
 		FinalOutcome: GatewayOutcome{
 			Status: finalOutcomeStatus.String,
 			Reason: finalOutcomeReason.String,
 		},
 		ExhaustedReason: exhaustedReason.String,
+		WebhookStatus:   webhookStatus.String,
+		WebhookError:    webhookError.String,
+	}
+	if webhookAttemptedAt.Valid {
+		intent.WebhookAttemptedAt = normalizeDBTime(webhookAttemptedAt.Time)
+	}
+	if webhookDeliveredAt.Valid {
+		intent.WebhookDeliveredAt = normalizeDBTime(webhookDeliveredAt.Time)
 	}
 
 	if intent.Status != IntentPending {
@@ -265,6 +365,32 @@ func (s *sqlStore) scanIntentRow(row *sql.Row) (Intent, int, bool, error) {
 		_ = normalizeDBTime(nextAttemptAt.Time)
 	}
 	return intent, attemptCount, true, nil
+}
+
+func (s *sqlStore) recordWebhookAttempt(ctx context.Context, intentID string, status string, attemptedAt time.Time, errMsg string) error {
+	attemptedAt = attemptedAt.UTC()
+	var deliveredAt sql.NullTime
+	if status == webhookDelivered {
+		deliveredAt = sql.NullTime{Time: attemptedAt, Valid: true}
+	}
+	_, err := s.db.ExecContext(
+		ctx,
+		`UPDATE dbo.submission_intents
+     SET webhook_status = @p1,
+         webhook_attempted_at = @p2,
+         webhook_delivered_at = @p3,
+         webhook_error = @p4,
+         updated_at = @p5
+     WHERE intent_id = @p6 AND webhook_status = @p7`,
+		status,
+		attemptedAt,
+		deliveredAt,
+		nullString(errMsg),
+		attemptedAt,
+		intentID,
+		webhookPending,
+	)
+	return err
 }
 
 func (s *sqlStore) loadAttempts(ctx context.Context, intentID string) ([]Attempt, error) {

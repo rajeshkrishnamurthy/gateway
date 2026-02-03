@@ -10,6 +10,7 @@ import (
 func TestLoadRegistryValidConfig(t *testing.T) {
 	config := `# top comment
 {
+  "allowUnsignedWebhooks": true,
   "targets": [
     {
       "submissionTarget": "sms.realtime",
@@ -17,7 +18,13 @@ func TestLoadRegistryValidConfig(t *testing.T) {
       "gatewayUrl": "http://localhost:8080",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
-      "terminalOutcomes": ["invalid_request", "invalid_message"]
+      "terminalOutcomes": ["invalid_request", "invalid_message"],
+      "webhook": {
+        "url": "http://localhost:9999/webhook",
+        "headers": {
+          "X-Env": "dev"
+        }
+      }
     },
     {
       "submissionTarget": "push.realtime",
@@ -59,6 +66,12 @@ func TestLoadRegistryValidConfig(t *testing.T) {
 	if contract.MaxAttempts != 0 {
 		t.Fatalf("expected maxAttempts 0, got %d", contract.MaxAttempts)
 	}
+	if contract.Webhook == nil {
+		t.Fatal("expected webhook config")
+	}
+	if contract.Webhook.URL != "http://localhost:9999/webhook" {
+		t.Fatalf("expected webhook url, got %q", contract.Webhook.URL)
+	}
 
 	pushContract, ok := registry.ContractFor("push.realtime")
 	if !ok {
@@ -69,6 +82,33 @@ func TestLoadRegistryValidConfig(t *testing.T) {
 	}
 	if pushContract.MaxAttempts != 3 {
 		t.Fatalf("expected maxAttempts 3, got %d", pushContract.MaxAttempts)
+	}
+}
+
+func TestLoadRegistryRejectsUnsignedWebhookByDefault(t *testing.T) {
+	config := `{
+  "targets": [
+    {
+      "submissionTarget": "sms.realtime",
+      "gatewayType": "sms",
+      "gatewayUrl": "http://localhost:8080",
+      "policy": "deadline",
+      "maxAcceptanceSeconds": 30,
+      "terminalOutcomes": ["invalid_request"],
+      "webhook": {
+        "url": "http://localhost:9999/webhook"
+      }
+    }
+  ]
+}
+`
+	path := writeTempConfig(t, config)
+	_, err := LoadRegistry(path)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "secretEnv") {
+		t.Fatalf("expected secretEnv error, got %q", err.Error())
 	}
 }
 

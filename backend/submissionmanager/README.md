@@ -6,6 +6,7 @@ Key points:
 
 - SubmissionManager resolves submissionTarget via the SubmissionTarget registry and stores a contract snapshot on each intent.
 - It executes attempts via a provided AttemptExecutor and manages intent state transitions (accepted, rejected, exhausted).
+- It sends an optional terminal webhook callback configured on the submissionTarget contract.
 - Retry timing uses a fixed 5 second delay as an internal execution policy, not a contract term.
 - Intent state (including attempts and nextAttemptAt) is persisted in SQL Server; the in-memory queue is rebuilt on startup.
 - SQL schema lives in `backend/conf/sql/submissionmanager`.

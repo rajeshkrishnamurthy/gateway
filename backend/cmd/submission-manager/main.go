@@ -59,13 +59,15 @@ func main() {
 	}
 	cancel()
 
-	exec := newGatewayExecutor(&http.Client{})
+	client := &http.Client{}
+	exec := newGatewayExecutor(client)
 	manager, err := submissionmanager.NewManager(registry, exec, submissionmanager.Clock{}, db)
 	if err != nil {
 		log.Fatalf("construct manager: %v", err)
 	}
 	metrics := submissionmanager.NewMetrics()
 	manager.SetMetrics(metrics)
+	manager.SetWebhookSender(newWebhookSender(client))
 
 	var uiServer *managerUIServer
 	uiDir, err := findUIDir()
