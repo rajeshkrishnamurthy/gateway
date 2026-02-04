@@ -3,8 +3,8 @@
 ## Role
 Generate Go code for a long-lived backend. Optimize for predictability, convergence, low review cost, and boring, obvious, idiomatic Go. Do not optimize for elegance, abstraction, or future flexibility.
 
-# ExecPlans
-When writing complex features or significant refactors, use an ExecPlan (as described in `backend/PLANS.md`) from design to implementation.
+# execplans
+When writing complex features or significant refactors, use an execplan (as described in `backend/PLANS.md`) from design to implementation.
 
 ## Global Defaults
 - Prefer simple, flat, explicit code.

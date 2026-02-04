@@ -1,4 +1,5 @@
 # SubmissionManager Webhooks (Terminal Status)
+COMPLETED
 
 ## Purpose
 

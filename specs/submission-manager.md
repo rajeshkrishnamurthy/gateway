@@ -1,4 +1,5 @@
 # Submission Manager and SubmissionTarget Contracts
+COMPLETED
 
 ## Purpose
 

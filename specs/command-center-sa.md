@@ -1,10 +1,12 @@
-# Command Center: SubmissionManager and HAProxy services (draft)
+# Command Center: SubmissionManager and HAProxy services
+COMPLETED
+
 
 ## Purpose
 
 Ensure the Command Center lists multiple SubmissionManager instances and the HAProxy instance, and allows operators to start/stop each from the UI. The same view must be visible in the Admin Portal via the Command Center proxy.
 
-## Scope and non-goals
+## Scope
 
 In scope:
 
@@ -13,6 +15,8 @@ In scope:
 - Start/stop actions for each instance via the Command Center UI.
 - Health visibility for each instance in the Command Center UI.
 - Visibility of the same Command Center view in the Admin Portal.
+
+## Non-goals
 
 Out of scope:
 
@@ -26,6 +30,7 @@ Out of scope:
 - Command Center health state is derived solely from the configured `healthUrl` for each instance.
 - Start/stop commands are the only control plane actions exposed by the Command Center.
 - Instance identity and display are defined by the Command Center config, not discovered dynamically.
+- The UI displays the configured `addr` verbatim (no derived port or host translation).
 
 ## Configuration
 
@@ -33,8 +38,8 @@ This spec relies on the existing Command Center schema in `specs/services-health
 
 Required service entries:
 
-- A service entry for SubmissionManager with one instance per SubmissionManager process.
-- A service entry for HAProxy with exactly one instance.
+- One service entry per SubmissionManager instance (mirroring the existing per-instance rows), each with exactly one instance.
+- A single service entry for HAProxy that can list multiple instances (frontends/stats) while retaining a single toggle for the HAProxy process.
 
 Each instance must set:
 
@@ -44,39 +49,23 @@ Each instance must set:
 
 Each service must define `startCommand` and `stopCommand` so the Command Center can perform stop/start actions. Commands should target a specific instance using the supported placeholders `{config}`, `{addr}`, and `{port}`.
 
-Example (illustrative only):
+SubmissionManager naming (retain current behavior):
 
-```json
-{
-  "services": [
-    {
-      "id": "submission-manager",
-      "label": "Submission Manager",
-      "instances": [
-        {"name": "sm-01", "addr": "sm-01:8082", "healthUrl": "http://sm-01:8082/healthz"},
-        {"name": "sm-02", "addr": "sm-02:8082", "healthUrl": "http://sm-02:8082/healthz"}
-      ],
-      "startCommand": ["./bin/service-control", "start", "{addr}"],
-      "stopCommand": ["./bin/service-control", "stop", "{addr}"]
-    },
-    {
-      "id": "haproxy",
-      "label": "HAProxy",
-      "instances": [
-        {"name": "haproxy-01", "addr": "haproxy:8404", "healthUrl": "http://haproxy:8404/healthz"}
-      ],
-      "startCommand": ["./bin/service-control", "start", "{addr}"],
-      "stopCommand": ["./bin/service-control", "stop", "{addr}"]
-    }
-  ]
-}
-```
+- Service `id` is `submission-manager-<n>`.
+- Service `label` is `Submission Manager (<n>)`.
+- Instance `name` is `submission-manager-<n>`.
+
+HAProxy toggle behavior (retain current behavior):
+
+- The HAProxy service uses the existing single-toggle behavior (`singleToggle`) with a configured `toggleInstance`.
 
 ## UI behavior
 
 - The Command Center UI lists all SubmissionManager instances and the HAProxy instance.
 - Each instance displays its current health status based on `healthUrl`.
-- Start and stop controls are available for each instance when `startCommand` and `stopCommand` are configured.
+- The UI displays the configured `addr` string for each instance.
+- Start and stop controls use the existing ON/OFF toggle and are available for each instance when `startCommand` and `stopCommand` are configured.
+- The ON/OFF toggle state reflects the latest observed health (`up` => ON, `down` => OFF); toggling invokes `startCommand` or `stopCommand` immediately.
 - The Admin Portal Command Center view shows the same instance list and controls.
 
 ## Race-condition handling

@@ -1,6 +1,6 @@
 # SubmissionManager Leader Lease (SQL Server)
 
-This ExecPlan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
+This execplan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 
 This plan follows `backend/PLANS.md` from the repository root and must be maintained in accordance with it.
 
@@ -10,7 +10,7 @@ After this change, multiple SubmissionManager instances can sit behind HAProxy f
 
 ## Progress
 
-- [x] (2026-02-03 20:10Z) Read `specs/submission-manager-leaderlease.md` and repository context; draft ExecPlan.
+- [x] (2026-02-03 20:10Z) Read `specs/submission-manager-leaderlease.md` and repository context; draft execplan.
 - [x] (2026-02-03 21:05Z) Update SQL schema for leader leases and intent schedule watermark.
 - [x] (2026-02-03 21:20Z) Implement lease acquisition/renewal, leader gating, and schedule refresh loops.
 - [x] (2026-02-03 21:25Z) Fence executor-side writes by lease_epoch and holder_id.
@@ -171,7 +171,7 @@ All SQL comparisons that decide lease validity or intent due-ness must use `SYSU
 
 ---
 
-Change log: ExecPlan created from `specs/submission-manager-leaderlease.md` to drive leader-lease implementation. (2026-02-03 / Codex)
+Change log: execplan created from `specs/submission-manager-leaderlease.md` to drive leader-lease implementation. (2026-02-03 / Codex)
 
 Plan update: Removed spec document edits from the plan and limited documentation changes to `backend/README.md` to comply with EXEC restrictions on `specs/`. (2026-02-03 / Codex)
 

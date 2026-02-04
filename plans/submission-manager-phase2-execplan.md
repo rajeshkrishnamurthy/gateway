@@ -1,6 +1,6 @@
 # Phase 2: SubmissionIntent execution engine (core, in-memory)
 
-This ExecPlan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
+This execplan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 
 This plan follows `backend/PLANS.md` from the repository root and must be maintained in accordance with it.
 
@@ -10,7 +10,7 @@ After this change, SubmissionManager has a core, HTTP-agnostic execution engine 
 
 ## Progress
 
-- [x] (2026-01-27 21:30Z) Review Phase 1 registry outputs, gateway outcomes, and ExecPlan requirements for the Phase 2 engine.
+- [x] (2026-01-27 21:30Z) Review Phase 1 registry outputs, gateway outcomes, and execplan requirements for the Phase 2 engine.
 - [x] (2026-01-28 10:55Z) Implement the in-memory intent store and attempt history model, including a resolved contract snapshot.
 - [x] (2026-01-28 11:05Z) Implement the SubmissionManager execution loop with a single worker and deterministic scheduling.
 - [x] (2026-01-28 11:25Z) Add contract-aware attempt evaluation (terminal outcomes and policy-specific completion rules) with explicit gateway-outcome vs policy-decision separation and clear intent-status semantics.

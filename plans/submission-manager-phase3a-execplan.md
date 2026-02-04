@@ -1,6 +1,6 @@
 # Phase 3a: SQL Server durability for SubmissionManager
 
-This ExecPlan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
+This execplan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 
 This plan follows `backend/PLANS.md` from the repository root and must be maintained in accordance with it.
 
@@ -110,7 +110,7 @@ Acceptance is met when:
 
 ## Idempotence and Recovery
 
-Schema migrations must be repeatable or idempotent, and the store must handle restarts gracefully. If a migration fails, document rollback steps (drop/recreate test DB) in the ExecPlan.
+Schema migrations must be repeatable or idempotent, and the store must handle restarts gracefully. If a migration fails, document rollback steps (drop/recreate test DB) in the execplan.
 
 ## Artifacts and Notes
 
@@ -125,4 +125,4 @@ Schema migrations must be repeatable or idempotent, and the store must handle re
 
 ---
 
-Change log: Phase 3a ExecPlan created to add SQL Server durability for SubmissionManager. (2026-01-29 / Codex)
+Change log: Phase 3a execplan created to add SQL Server durability for SubmissionManager. (2026-01-29 / Codex)

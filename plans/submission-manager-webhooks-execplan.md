@@ -1,6 +1,6 @@
 # SubmissionManager terminal webhooks
 
-This ExecPlan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
+This execplan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 
 This plan is written to satisfy `backend/PLANS.md` in the repository root and must be maintained in accordance with that file.
 
@@ -10,7 +10,7 @@ After this change, SubmissionManager will send a best-effort HTTP callback when 
 
 ## Progress
 
-- [x] 2026-02-02 18:45Z Create initial ExecPlan for terminal webhooks.
+- [x] 2026-02-02 18:45Z Create initial execplan for terminal webhooks.
 - [x] 2026-02-02 19:10Z Add contract-level webhook config and validation in the registry.
 - [x] 2026-02-02 19:18Z Extend SQL schema and store logic to persist webhook snapshots and delivery status.
 - [x] 2026-02-02 19:28Z Add webhook dispatch to SubmissionManager with single-attempt best-effort delivery.
@@ -148,7 +148,7 @@ In `backend/submissionmanager/manager.go`, define a function type:
 
 where WebhookDelivery includes the resolved URL, headers, signature, and JSON payload. The core submissionmanager package must not import net/http. The concrete HTTP sender belongs in `backend/cmd/submission-manager`.
 
-At the end of each iteration, append a short note to this ExecPlan describing what changed and why.
+At the end of each iteration, append a short note to this execplan describing what changed and why.
 
 ---
 Plan created: 2026-02-02 / Codex. Future edits must update Progress, Decision Log, and Outcomes.

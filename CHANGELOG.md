@@ -2,6 +2,10 @@
 
 This changelog records user-visible feature additions. History tracking starts on 2026-02-02.
 
+## 2026-02-04
+
+- Command Center: display SubmissionManager and HAProxy instances with their configured addresses and aligned controls in the services list.
+
 ## 2026-02-02
 
 - Added sync wait support for POST /v1/intents via the waitSeconds query parameter.

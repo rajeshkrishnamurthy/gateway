@@ -1,6 +1,6 @@
 # Unify Consoles In An Admin Portal
 
-This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
+This execplan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 This plan is governed by `backend/PLANS.md` and must be maintained in accordance with it.
 

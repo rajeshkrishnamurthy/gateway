@@ -1,4 +1,5 @@
 # Submission Manager metrics
+COMPLETED
 
 ## Purpose
 

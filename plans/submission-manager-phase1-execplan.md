@@ -1,6 +1,6 @@
 # Phase 1: SubmissionTarget registry and contract mapping
 
-This ExecPlan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
+This execplan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 
 This plan follows `backend/PLANS.md` from the repository root and must be maintained in accordance with it.
 
@@ -10,7 +10,7 @@ After this change, the repository has a formal SubmissionTarget registry that bi
 
 ## Progress
 
-- [x] (2026-01-27 19:00Z) Review gateway contracts, config loaders, and ExecPlan conventions to align the Phase 1 registry design with existing patterns.
+- [x] (2026-01-27 19:00Z) Review gateway contracts, config loaders, and execplan conventions to align the Phase 1 registry design with existing patterns.
 - [x] (2026-01-27 20:15Z) Define the SubmissionTarget contract schema and document it in `specs/submission-manager.md`.
 - [x] (2026-01-27 20:20Z) Add a sample registry config under `backend/conf/submission/submission_targets.json`.
 - [x] (2026-01-27 20:45Z) Implement `gateway/submission` registry loader and validator with explicit gateway type binding.

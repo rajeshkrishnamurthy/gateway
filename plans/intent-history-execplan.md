@@ -1,6 +1,6 @@
 # Intent history UI (authoritative attempts view)
 
-This ExecPlan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
+This execplan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 
 This plan follows backend/PLANS.md from the repository root. Keep it updated as changes are made.
 

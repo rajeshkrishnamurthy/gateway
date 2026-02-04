@@ -1,4 +1,5 @@
 # Gateway metrics
+COMPLETED
 
 ## Purpose
 

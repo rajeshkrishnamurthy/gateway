@@ -1,4 +1,5 @@
 # Gateway configs
+COMPLETED
 
 ## Common config rules
 

@@ -1,13 +1,15 @@
-# AGENTS.md — Authority & Execution Contract
+# AGENTS.md — Mode Index and Global Invariants
 
 ## Purpose
 
-This document defines **authority boundaries, stop conditions, and behavioral constraints** for Codex.
+This repository uses explicit **modes** to separate authority and reduce ambiguity when working with Codex.
 
-It is **repo-level and stable**.
-It does not change per feature or per worktree.
+`AGENTS.md` is an **index + constitution**:
 
-All behavior is governed by an explicit **MODE** declared at the start of each Codex session.
+* It defines global invariants and session rules.
+* It delegates mode-specific rules to `agents/*.md`.
+
+These rules are **normative**. Follow them to the letter.
 
 ---
 
@@ -15,209 +17,68 @@ All behavior is governed by an explicit **MODE** declared at the start of each C
 
 Exactly one mode must be active per Codex session:
 
-1. **SPEC MODE** — define intent
-2. **PLAN MODE** — derive execution steps
-3. **EXEC MODE** — implement
-4. **VERIFY MODE** — challenge correctness
+* **SPEC** — define requirements and intent (what must be true)
+* **DESIGN** — choose bounded technical conventions needed for determinism
+* **EXEC** — plan and implement based on spec and design (if present). 
+* **VERIFY** — adversarial validation and coverage-guided gap finding (no new decisions)
+* **DEPLOY** - deployment related aspects
+---
 
-If the active mode is unclear, Codex must stop and ask.
+## Mode Declaration (Mandatory)
+
+Every Codex session must begin with a single line:
+
+`MODE: <SPEC|DESIGN|EXEC|VERIFY|DEPLOY>`
+
+If the mode is unclear, Codex must stop and ask.
+
+---
+
+## Repository Document Locations
+
+* Specs: `specs/`
+* Design notes: `designs/`
+* execplans: `plans/` (feature-specific execplan files)
+* Execution discipline: `backend/PLANS.md` (read-only)
 
 ---
 
 ## Required Reading Order (All Modes)
 
-1. This `AGENTS.md`
-2. Relevant spec documents in `specs/`
-3. `backend/PLANS.md` (PLAN / EXEC / VERIFY only; read-only)
-4. README for operational context
+1. `AGENTS.md`
+2. Mode document: `agents/<MODE>.md`
+3. Component-level `AGENTS.md` files for the area being changed (e.g., `backend/AGENTS.md` when working in `backend/`)
+4. Relevant specs in `specs/`
+5. Relevant design notes in `designs/` (when present)
+6. Existing execplan in `plans/` (when present and relevant to the change)
+7. README / operational docs (as needed)
 
 ---
 
-## SPEC MODE
+## Global Invariants (Override All Modes)
 
-### Authority
-
-* **Primary actor:** Human
-* **Codex role:** Challenger and critic, not a decision-maker
-
-### Allowed Activities
-
-* Create or edit spec documents in `specs/`
-* Define scope and non-goals
-* Define invariants and guarantees
-* Identify race conditions and concurrency semantics
-* Define failure modes
-* Define observable acceptance criteria
-
-### Disallowed Activities (Hard Stop)
-
-* Writing or modifying production code
-* Writing or modifying tests
-* Deriving execution steps
-* Making implementation decisions
-
-### Required Spec Checkpoints
-
-All specs must explicitly include:
-
-* Scope and non-goals
-* Invariants
-* Race-condition handling
-* Failure semantics
-* Concurrency guarantees
-* Observable acceptance criteria
-
-### Stop Conditions
-
-Codex must stop if:
-
-* a decision is required, but provide your clear recommendation highlighting any significant risks
-* ambiguity exists,
-* a design choice is needed,
-* behavior would be implied but not stated.
+1. **Human override on decisions.** If the human explicitly asks Codex to decide, Codex should decide, then follow mode constraints for where that decision is recorded/applied.
+2. **No ambiguity-by-assumption.** If multiple interpretations exist for intent/behavior, stop and escalate. Low-level implementation ambiguity may be resolved and logged in the execplan.
+3. **Specs are contracts.** Specs can be modified only in SPEC mode. 
+4. **Plans are contracts.** execplans can be modified only in EXEC mode. 
+5. **Verification cannot redefine intent.** VERIFY may not weaken or reinterpret spec guarantees.
+6. **backend/PLANS.md is read-only.** It governs how execplans are written/executed; it must not be modified during feature work.
 
 ---
 
-## PLAN MODE
+## Session Discipline (Mandatory)
 
-### Purpose
+* One Codex session = one mode.
+* Non-trivial work must use separate sessions for:
 
-Derive a **deterministic ExecPlan** from a frozen spec.
-
-### Authority
-
-* **Primary actor:** Codex (planner role)
-* **Human role:** Supervisor / confirmer
-
-### Inputs
-
-* Frozen spec documents (`PLAN-READY`)
-* `backend/PLANS.md` (execution discipline; read-only)
-
-### Allowed Activities
-
-* Expand spec requirements into ordered, concrete execution steps
-* Identify prerequisites and dependencies
-* Produce a single ExecPlan artifact
-
-### Disallowed Activities (Hard Stop)
-
-* Modifying specs
-* Introducing new requirements or constraints
-* Making architectural or design decisions
-* Implementing code or tests
-
-### Stop Conditions
-
-Codex must stop if:
-
-* an ExecPlan cannot be derived without making a decision,
-* multiple valid execution strategies exist,
-* the spec is insufficiently precise.
+  * EXEC (implement)
+  * VERIFY (validate/review)
 
 ---
 
-## EXEC MODE
+## Mode Transitions (Default Pipeline)
 
-### Purpose
+SPEC → DESIGN (optional) → EXEC → VERIFY
 
-Implement the frozen ExecPlan exactly.
-
-### Authority
-
-* **Primary actor:** Codex (implementer role)
-* **Human role:** Supervisor only
-
-### Authoritative Inputs
-
-* Frozen spec documents
-* Frozen ExecPlan
-
-These are immutable contracts during EXEC.
-
-### Allowed Activities
-
-* Implement code exactly as specified
-* Write implementation tests required by the ExecPlan
-* Perform mechanical, behavior-preserving refactors
-* Run builds and tests
-
-### Disallowed Activities (Hard Stop)
-
-* Modifying specs or ExecPlan
-* Introducing new scope or requirements
-* Making architectural or design decisions
-* Resolving ambiguity by assumption
-
-### Stop Conditions
-
-Codex must stop if:
-
-* a step cannot be executed as written,
-* behavior is unclear,
-* implementation requires a new decision.
-
----
-
-## VERIFY MODE
-
-### Purpose
-
-Challenge correctness and completeness.
-
-### Authority
-
-* **Primary actor:** Codex (verifier role)
-* Runs in a **separate session** from EXEC
-
-### Use of Existing Tests
-
-* Implementation-written tests are valid inputs
-* They are not proof of completeness
-
-### Verification Activities
-
-* Attempt to falsify spec invariants
-* Add adversarial tests for edge cases, races, and failure modes
-* Use coverage to identify blind spots
-
-### Coverage Rules
-
-* Coverage is a diagnostic signal, not a goal
-* Tests must not be added solely to raise coverage
-* Every verification test must map to:
-
-  * a spec invariant,
-  * a failure mode,
-  * a concurrency/race condition,
-  * or a boundary implied by the spec
-
-### Disallowed Activities (Hard Stop)
-
-* Weakening or redefining spec guarantees
-* Changing implementation behavior to satisfy tests
-* Introducing new intent
-
-### Stop Conditions
-
-Codex must stop if:
-
-* behavior cannot be tested without interpretation,
-* a missing or ambiguous requirement is discovered.
-
----
-
-## Global Invariant
-
-> **If correctness requires a new decision, execution must stop and authority returns to SPEC MODE.**
-
-This invariant overrides all other instructions.
-
----
-
-## Session Discipline
-
-* One Codex session = one MODE
-* MODE must be declared explicitly at session start
-* PLAN, EXEC, and VERIFY must use separate sessions for non-trivial work
-
+* Insist on DESIGN only when execplan cannot be deterministic without selecting a convention. 
+* If EXEC or VERIFY discovers missing/ambiguous intent, return to SPEC/DESIGN and restart the cycle.

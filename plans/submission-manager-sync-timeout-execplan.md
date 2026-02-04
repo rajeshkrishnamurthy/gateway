@@ -1,6 +1,6 @@
 # Implement waitSeconds sync wait for POST /v1/intents
 
-This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
+This execplan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 This plan must be maintained in accordance with `backend/PLANS.md` from the repository root.
 
@@ -10,7 +10,7 @@ After this change, a client can submit an intent and optionally ask the HTTP cal
 
 ## Progress
 
-- [x] (2026-02-02 12:45Z) Drafted ExecPlan for sync waitSeconds behavior.
+- [x] (2026-02-02 12:45Z) Drafted execplan for sync waitSeconds behavior.
 - [x] (2026-02-02 13:05Z) Implemented waitSeconds parsing/validation in `backend/cmd/submission-manager/handlers.go` and wired it into the submit path.
 - [x] (2026-02-02 13:05Z) Added SQL-backed wait polling in `backend/submissionmanager/manager.go`.
 - [x] (2026-02-02 13:10Z) Added waitSeconds tests (invalid, negative, timeout, early return) in `backend/cmd/submission-manager/main_test.go`.
@@ -146,6 +146,6 @@ Add or update the following interfaces and signatures:
 
 - In `backend/cmd/submission-manager/handlers.go`, parse `waitSeconds` and call `Manager.WaitForIntent` when `waitSeconds > 0`.
 
-At the end of the implementation, update this ExecPlan’s `Progress`, `Decision Log`, `Surprises & Discoveries`, and `Outcomes & Retrospective` sections to reflect the work done and any changes in approach.
+At the end of the implementation, update this execplan’s `Progress`, `Decision Log`, `Surprises & Discoveries`, and `Outcomes & Retrospective` sections to reflect the work done and any changes in approach.
 
 Plan update note: Marked all work complete, recorded test run, and added outcomes summary after implementation.

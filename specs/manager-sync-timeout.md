@@ -1,4 +1,5 @@
 # SubmissionManager sync wait (waitSeconds)
+COMPLETED
 
 ## Purpose
 

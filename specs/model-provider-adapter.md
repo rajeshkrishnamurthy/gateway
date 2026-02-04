@@ -1,4 +1,5 @@
 # Model SMS Provider Adapter — Canonical Specification
+COMPLETED
 
 ## Purpose
 

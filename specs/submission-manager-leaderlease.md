@@ -1,4 +1,5 @@
-# SubmissionManager leader lease (SQL Server) - draft
+# SubmissionManager leader lease (SQL Server)
+COMPLETED
 
 ## Purpose
 

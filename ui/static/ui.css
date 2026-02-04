@@ -786,12 +786,29 @@ main.page {
 
 .health-name {
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .health-instances {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.health-instance-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.health-single-toggle {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
 }
 
 .health-chip {
@@ -836,6 +853,10 @@ main.page {
   display: inline-flex;
   align-items: center;
   gap: 0.6rem;
+}
+
+.health-table-section {
+  overflow-x: auto;
 }
 
 .link-button {

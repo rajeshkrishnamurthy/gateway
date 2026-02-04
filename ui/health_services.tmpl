@@ -8,13 +8,12 @@
       <h2>Services</h2>
     </div>
 
-    <div class="table-section">
+    <div class="table-section health-table-section">
       <table class="table health-table">
         <thead>
           <tr>
             <th>Component</th>
             <th>Instances</th>
-            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -28,55 +27,13 @@
                 <span class="muted">No instances configured.</span>
                 {{end}}
                 {{range .Instances}}
-                <div class="health-chip {{.StatusClass}}">
-                  <span class="health-chip-name">{{.Name}}</span>
-                  <span class="health-chip-port">:{{.Port}}</span>
-                  <span class="health-chip-status">{{.Status}}</span>
-                </div>
-                {{end}}
-              </div>
-            </td>
-            <td>
-              <div class="health-actions">
-                {{if not $service.Instances}}
-                <span class="muted">No instances.</span>
-                {{else}}
-                {{if $service.SingleToggle}}
-                <div class="health-action-row">
-                  <span class="health-action-label">Process</span>
-                  <div class="health-action-buttons">
-                    {{if $service.ToggleIsUp}}
-                    {{if $service.HasStop}}
-                    <form hx-post="/ui/services/stop" hx-target="#health-services" hx-swap="outerHTML">
-                      <input type="hidden" name="serviceId" value="{{$service.ID}}">
-                      <input type="hidden" name="instanceName" value="{{$service.ToggleInstanceName}}">
-                      <button class="toggle is-on" type="submit" role="switch" aria-checked="true">On</button>
-                    </form>
-                    {{else}}
-                    <button class="toggle is-on" type="button" disabled>On</button>
-                    {{end}}
-                    {{else}}
-                    {{if $service.HasStart}}
-                    <form hx-post="/ui/services/start" hx-target="#health-services" hx-swap="outerHTML">
-                      <input type="hidden" name="serviceId" value="{{$service.ID}}">
-                      <input type="hidden" name="instanceName" value="{{$service.ToggleInstanceName}}">
-                      <button class="toggle is-off" type="submit" role="switch" aria-checked="false">Off</button>
-                    </form>
-                    {{else}}
-                    <button class="toggle is-off" type="button" disabled>Off</button>
-                    {{end}}
-                    {{end}}
-                    {{if $service.ToggleConfigPath}}
-                    <button class="link-button" type="button" hx-get="/ui/config?serviceId={{$service.ID}}&instanceName={{$service.ToggleInstanceName}}" hx-target="#config-view" hx-swap="outerHTML">Config</button>
-                    {{else}}
-                    <span class="link-button placeholder" aria-hidden="true">Config</span>
-                    {{end}}
+                <div class="health-instance-row">
+                  <div class="health-chip {{.StatusClass}}">
+                    <span class="health-chip-name">{{.Name}}</span>
+                    <span class="health-chip-port">{{.Addr}}</span>
+                    <span class="health-chip-status">{{.Status}}</span>
                   </div>
-                </div>
-                {{else}}
-                {{range .Instances}}
-                <div class="health-action-row">
-                  <span class="health-action-label">{{.Name}}</span>
+                  {{if not $service.SingleToggle}}
                   <div class="health-action-buttons">
                     {{if .IsUp}}
                     {{if $service.HasStop}}
@@ -105,16 +62,50 @@
                     <span class="link-button placeholder" aria-hidden="true">Config</span>
                     {{end}}
                   </div>
+                  {{end}}
                 </div>
                 {{end}}
-                {{end}}
-                {{if not $service.HasStart}}
-                {{if not $service.HasStop}}
-                <span class="muted">Actions not configured.</span>
-                {{end}}
-                {{end}}
-                {{end}}
               </div>
+              {{if $service.SingleToggle}}
+              {{if $service.Instances}}
+              <div class="health-single-toggle">
+                <span class="health-action-label">Process</span>
+                <div class="health-action-buttons">
+                  {{if $service.ToggleIsUp}}
+                  {{if $service.HasStop}}
+                  <form hx-post="/ui/services/stop" hx-target="#health-services" hx-swap="outerHTML">
+                    <input type="hidden" name="serviceId" value="{{$service.ID}}">
+                    <input type="hidden" name="instanceName" value="{{$service.ToggleInstanceName}}">
+                    <button class="toggle is-on" type="submit" role="switch" aria-checked="true">On</button>
+                  </form>
+                  {{else}}
+                  <button class="toggle is-on" type="button" disabled>On</button>
+                  {{end}}
+                  {{else}}
+                  {{if $service.HasStart}}
+                  <form hx-post="/ui/services/start" hx-target="#health-services" hx-swap="outerHTML">
+                    <input type="hidden" name="serviceId" value="{{$service.ID}}">
+                    <input type="hidden" name="instanceName" value="{{$service.ToggleInstanceName}}">
+                    <button class="toggle is-off" type="submit" role="switch" aria-checked="false">Off</button>
+                  </form>
+                  {{else}}
+                  <button class="toggle is-off" type="button" disabled>Off</button>
+                  {{end}}
+                  {{end}}
+                  {{if $service.ToggleConfigPath}}
+                  <button class="link-button" type="button" hx-get="/ui/config?serviceId={{$service.ID}}&instanceName={{$service.ToggleInstanceName}}" hx-target="#config-view" hx-swap="outerHTML">Config</button>
+                  {{else}}
+                  <span class="link-button placeholder" aria-hidden="true">Config</span>
+                  {{end}}
+                </div>
+              </div>
+              {{end}}
+              {{end}}
+              {{if not $service.HasStart}}
+              {{if not $service.HasStop}}
+              <span class="muted">Actions not configured.</span>
+              {{end}}
+              {{end}}
             </td>
           </tr>
           {{end}}

@@ -1,4 +1,5 @@
 # Gateway contracts
+COMPLETED
 
 ## Purpose
 

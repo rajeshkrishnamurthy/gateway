@@ -1,6 +1,6 @@
 # Phase 3b: HTTP service for SubmissionManager
 
-This ExecPlan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
+This execplan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 
 This plan follows `backend/PLANS.md` from the repository root and must be maintained in accordance with it.
 
@@ -11,7 +11,7 @@ After this change, a client can create or query a SubmissionIntent over HTTP wit
 ## Progress
 
 - [x] (2026-01-29 16:46Z) Review existing SubmissionManager specs and invariants for HTTP mapping.
-- [x] (2026-01-29 16:46Z) Draft HTTP API shapes and error mapping in the ExecPlan.
+- [x] (2026-01-29 16:46Z) Draft HTTP API shapes and error mapping in the execplan.
 - [x] (2026-01-29 16:46Z) Add a new HTTP service entrypoint under `backend/cmd/` wired to registry and SQL.
 - [x] (2026-01-29 16:46Z) Implement HTTP handlers that delegate to SubmissionManager with minimal validation.
 - [x] (2026-01-29 16:46Z) Add handler and integration tests using the SQL test DB helper.
@@ -77,7 +77,7 @@ Tests will be added with `net/http/httptest` to validate submit/query behavior, 
 
 Work from the repository root unless noted. The steps below are written so they can be performed in order with minimal guesswork.
 
-1) Read `specs/submission-manager.md` and `backend/submissionmanager/README.md` to confirm the exact Intent/Attempt fields and status semantics. Record the HTTP request/response shapes in this ExecPlan as the authoritative mapping.
+1) Read `specs/submission-manager.md` and `backend/submissionmanager/README.md` to confirm the exact Intent/Attempt fields and status semantics. Record the HTTP request/response shapes in this execplan as the authoritative mapping.
 
 2) Add `backend/cmd/submission-manager/main.go` that does the following:
    - Parse configuration (address, registry path, SQL connection).
@@ -181,7 +181,7 @@ The HTTP layer must not depend on or mutate `backend/submission/registry.go` bey
 ---
 
 Change log:
-- Phase 3b ExecPlan created to add an HTTP adapter for SubmissionManager while preserving Phase 1–3a invariants. (2026-01-29 / Codex)
+- Phase 3b execplan created to add an HTTP adapter for SubmissionManager while preserving Phase 1–3a invariants. (2026-01-29 / Codex)
 - Updated to reflect handler placement rule changes and removal of contract snapshots from HTTP responses; added executor mapping decisions and completion status. (2026-01-29 / Codex)
 - Updated response shape to include completedAt and rejectedReason while keeping responses contract-free. (2026-01-29 / Codex)
 - Updated HTTP response fields to use completedAt/rejectedReason/exhaustedReason and removed finalOutcome from the API surface. (2026-01-30 / Codex)

@@ -1,7 +1,7 @@
 ## Codex maintenance notes
 
 This repo is maintained by Codex across sessions. Before changing behavior, read the closest `AGENTS.md` and follow `PLANS.md` for non-trivial work.
-ExecPlans live under `plans/`.
+execplans live under `plans/`.
 
 Start with these operational docs:
 - `backend/cmd/services-health/README.md` for the Command Center.

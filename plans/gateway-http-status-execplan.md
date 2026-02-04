@@ -1,6 +1,6 @@
 # Gateway HTTP status normalization
 
-This ExecPlan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
+This execplan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 
 This plan follows `backend/PLANS.md` from the repository root and must be maintained in accordance with it.
 
@@ -113,5 +113,5 @@ Example non‑normalizable failure (internal error):
 ---
 
 Change log:
-- ExecPlan created to normalize gateway HTTP statuses to 2xx for all normalized outcomes and align executor parsing rules. (2026-01-29 / Codex)
+- execplan created to normalize gateway HTTP statuses to 2xx for all normalized outcomes and align executor parsing rules. (2026-01-29 / Codex)
 - Progress updated with implementation status, documentation changes, and completed tests for gateway handlers and executor. (2026-01-29 / Codex)
