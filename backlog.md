@@ -16,5 +16,6 @@ This list captures follow-up ideas and open questions to consider in later phase
 - Contract evolution: Decide how to handle registry changes after intent creation (versioning, migrations, backward compatibility). Code to examine: `backend/submission/registry.go`, `backend/submissionmanager/manager.go`.
 - Routing evolution: Define registry reload behavior and its effect on in-flight intents while preserving contract snapshots. Code to examine: `backend/submission/registry.go`, `backend/submissionmanager/manager.go`.
 - Delivery tracking: Plan integration with a separate delivery-status system once acceptance is not the end state. Code to examine: none in this repo yet (new module expected).
+- Delivery tracking applicability: Decide whether delivery tracking is contract-driven per `submissionTarget`, and define behavior for intents where tracking is not applicable.
 - Multi-tenant isolation: Decide per-tenant limits and policy overrides, ensuring tenant identifiers flow consistently. Code to examine: `backend/sms_gateway.go`, `backend/push_gateway.go`, `backend/submissionmanager/manager.go`.
 - Testing strategy: Add end-to-end coverage once the HTTP surface exists, beyond unit tests. Code to examine: `backend/submissionmanager/manager_test.go`.

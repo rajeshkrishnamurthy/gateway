@@ -55,6 +55,36 @@ Every spec must explicitly include:
 7. Concurrency guarantees (explicit)
 8. Observable acceptance criteria (explicit)
 
+## Spec Authoring Style (Mandatory)
+
+SPEC documents must be written for human readability first, while preserving deterministic downstream use by DESIGN, EXEC, and VERIFY.
+
+Use a paragraph-first structure in this order:
+
+1. Why (intent and purpose)
+2. What (scope and contract boundaries)
+3. How (operational behavior only when relevant at SPEC level)
+
+Keep the required checkpoint headings stable so downstream phases can parse specs predictably.
+
+Each major section must contain explicit normative statements using clear contract language (`must`, `must not`, `required`, `not allowed`) so implementation and verification do not rely on inference.
+
+`Observable acceptance criteria` must be written as distinct criteria (for example, criterion paragraphs or clearly separated points), not as one dense combined block.
+
+When multiple spec files exist for one feature/domain, avoid semantic duplication. Keep one source for each behavior and reference other normative specs instead of restating the same contract text.
+
+If deterministic implementation conventions are unresolved, include an explicit `Requires DESIGN decision` section and list each unresolved decision clearly.
+
+## Terminology Discipline (Mandatory)
+
+If a relevant `ubiquitous-language.md` exists for the domain (for example, under `specs/<domain>/`), SPEC must use that terminology as the source of truth.
+
+If a relevant domain `ubiquitous-language.md` does not exist, SPEC must create it first before introducing or expanding domain terminology in feature specs.
+
+SPEC must not introduce new domain terminology without explicit human agreement first.
+
+If a needed concept has no defined term, stop, ask the human to approve the new term, and then update the relevant `ubiquitous-language.md` before using that term across specs.
+
 ## DESIGN Hand-off Trigger
 
 If the spec requires a bounded internal convention/mapping (e.g., naming, identifiers, address-to-instance mapping) and there are multiple viable strategies:
@@ -79,7 +109,8 @@ Codex must stop and ask the human if:
 * more than one plausible interpretation exists,
 * a design choice is needed but not stated,
 * acceptance criteria are not observable/verifiable,
-* a bounded convention is required (enter DESIGN mode).
+* a bounded convention is required (enter DESIGN mode),
+* new terminology is needed but has not been explicitly agreed with the human.
 
 ## Output Expectations
 

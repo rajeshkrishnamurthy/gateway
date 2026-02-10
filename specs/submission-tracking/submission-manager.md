@@ -121,6 +121,9 @@ Each registry entry defines:
 - maxAttempts: required when policy is `max_attempts`
 - terminalOutcomes: required list of gateway-reported outcomes that this contract treats as terminal
 - webhook: optional terminal-status webhook config (see `submission-manager-webhooks.md`); secrets are referenced via env vars, not stored inline
+- deliveryTracking: optional delivery tracking contract config (see `specs/delivery-tracking/overview.md`)
+  - mode: optional `on` or `off` (default `off`)
+  - staleAfterSeconds: required when mode is `on`
 
 Notes:
 
@@ -130,6 +133,7 @@ Notes:
 - for deadline policy, a retry is scheduled only if the next due time is strictly before the acceptance deadline; otherwise the intent is exhausted.
 - fields not required by the selected policy must be omitted.
 - terminalOutcomes must not include empty values, must be unique, and must be valid for the gatewayType.
+- delivery tracking behavior beyond `mode` and `staleAfterSeconds` is internal semantics, not per-target public config.
 - policy selects the retry termination rule:
   - `deadline`: retries are allowed until the acceptance deadline.
   - `max_attempts`: retries are allowed until the attempt count reaches maxAttempts.
@@ -167,7 +171,11 @@ Gateway response status is accepted or rejected. Rejection reasons include:
       "gatewayUrl": "http://localhost:8080",
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
-      "terminalOutcomes": ["invalid_request", "invalid_recipient", "invalid_message"]
+      "terminalOutcomes": ["invalid_request", "invalid_recipient", "invalid_message"],
+      "deliveryTracking": {
+        "mode": "on",
+        "staleAfterSeconds": 86400
+      }
     },
     {
       "submissionTarget": "push.realtime",
