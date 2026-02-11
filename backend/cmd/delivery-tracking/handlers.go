@@ -13,6 +13,7 @@ import (
 
 type apiServer struct {
 	webhookIngestor *deliverytracking.WebhookIngestor
+	processor       *deliverytracking.Processor
 	reader          *deliverytracking.Reader
 	metrics         *deliverytracking.Metrics
 }
@@ -114,6 +115,43 @@ func (s *apiServer) handleDeliveryWebhookIngestion(w http.ResponseWriter, r *htt
 		reason := deliverytracking.MapProcessingFailureReason(err)
 		s.observeProcessingFailure(stage, reason)
 		s.logDeliveryProcessingFailure(stage, reason, intentID, "/v1/delivery/provider-signal-webhook", "unknown")
+		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "service unavailable", nil)
+		return
+	}
+
+	if s.processor == nil {
+		stage := deliverytracking.ProcessingStageCoreProcessing
+		reason := deliverytracking.ProcessingFailureReasonDependencyUnavailable
+		s.observeProcessingFailure(stage, reason)
+		s.logDeliveryProcessingFailure(stage, reason, result.IntentID, "/v1/delivery/provider-signal-webhook", "unknown")
+		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "service unavailable", nil)
+		return
+	}
+
+	correlationResult, err := s.processor.CorrelateByIntentID(r.Context(), result.IntentID)
+	if err != nil {
+		stage := deliverytracking.ProcessingStageCoreProcessing
+		reason := deliverytracking.MapProcessingFailureReason(err)
+		s.observeProcessingFailure(stage, reason)
+		s.logDeliveryProcessingFailure(stage, reason, result.IntentID, "/v1/delivery/provider-signal-webhook", "unknown")
+		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "service unavailable", nil)
+		return
+	}
+
+	_, err = s.processor.ApplyCorrelatedDeliveryRecord(r.Context(), deliverytracking.CorrelatedDeliveryRecord{
+		SourceRecordID:     result.SourceRecordID,
+		ProviderEventID:    result.ProviderEventID,
+		IntentID:           result.IntentID,
+		SignalClass:        result.ProviderDeliverySignal,
+		ProviderObservedAt: result.ProviderObservedAt,
+		ReceivedAt:         result.ReceivedAt,
+		CorrelationResult:  correlationResult,
+	})
+	if err != nil {
+		stage := deliverytracking.ProcessingStageCoreProcessing
+		reason := deliverytracking.MapProcessingFailureReason(err)
+		s.observeProcessingFailure(stage, reason)
+		s.logDeliveryProcessingFailure(stage, reason, result.IntentID, "/v1/delivery/provider-signal-webhook", string(correlationResult))
 		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "service unavailable", nil)
 		return
 	}

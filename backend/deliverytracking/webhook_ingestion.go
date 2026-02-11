@@ -34,18 +34,7 @@ type webhookIngestionRecord struct {
 	ingressSource          string
 }
 
-type webhookCorrelationHandoffRecord struct {
-	sourceRecordID         string
-	intentID               string
-	providerDeliverySignal DeliverySignalClass
-	providerObservedAt     sql.NullTime
-	providerEventID        sql.NullString
-	receivedAt             time.Time
-	effectiveAt            time.Time
-	ingressSource          string
-}
-
-type webhookCorrelationHandoffWriter func(context.Context, *sql.Tx, webhookCorrelationHandoffRecord) error
+type webhookIngressWriter func(context.Context, *sql.Tx, webhookIngestionRecord) error
 
 // InvalidWebhookPayloadError reports structurally invalid webhook payloads.
 type InvalidWebhookPayloadError struct {
@@ -70,8 +59,8 @@ type WebhookIngestionResult struct {
 
 // WebhookIngestor validates, normalizes, and persists delivery webhook ingress records.
 type WebhookIngestor struct {
-	store                   *sqlStore
-	writeCorrelationHandoff webhookCorrelationHandoffWriter
+	store              *sqlStore
+	writeIngressRecord webhookIngressWriter
 }
 
 // NewWebhookIngestor constructs a webhook ingestor backed by SQL persistence.
@@ -81,12 +70,12 @@ func NewWebhookIngestor(db *sql.DB) (*WebhookIngestor, error) {
 		return nil, err
 	}
 	return &WebhookIngestor{
-		store:                   store,
-		writeCorrelationHandoff: store.insertWebhookCorrelationHandoff,
+		store:              store,
+		writeIngressRecord: store.insertWebhookIngestionRecord,
 	}, nil
 }
 
-// IngestProviderSignalWebhook applies webhook-ingestion validation, normalization, and persistence/handoff atomically.
+// IngestProviderSignalWebhook validates, normalizes, and persists ingress-audit data for one webhook payload.
 func (i *WebhookIngestor) IngestProviderSignalWebhook(ctx context.Context, rawPayload []byte) (WebhookIngestionResult, error) {
 	if i == nil || i.store == nil {
 		return WebhookIngestionResult{}, WrapProcessingStageError(ProcessingStageWebhookIngestion, errors.New("webhook ingestor store is required"))
@@ -95,8 +84,8 @@ func (i *WebhookIngestor) IngestProviderSignalWebhook(ctx context.Context, rawPa
 	if err != nil {
 		return WebhookIngestionResult{}, err
 	}
-	if i.writeCorrelationHandoff == nil {
-		return WebhookIngestionResult{}, WrapProcessingStageError(ProcessingStageCorrelationHandoff, errors.New("webhook correlation handoff writer is required"))
+	if i.writeIngressRecord == nil {
+		return WebhookIngestionResult{}, WrapProcessingStageError(ProcessingStageWebhookIngestion, errors.New("webhook ingress writer is required"))
 	}
 
 	if ctx == nil {
@@ -137,26 +126,12 @@ func (i *WebhookIngestor) IngestProviderSignalWebhook(ctx context.Context, rawPa
 		effectiveAt:            effectiveAt,
 		ingressSource:          webhookIngressSourceProviderSignalWebhook,
 	}
-	if err := i.store.insertWebhookIngestionRecord(ctx, tx, ingestionRecord); err != nil {
+	if err := i.writeIngressRecord(ctx, tx, ingestionRecord); err != nil {
 		return WebhookIngestionResult{}, WrapProcessingStageError(ProcessingStageWebhookIngestion, err)
 	}
 
-	handoffRecord := webhookCorrelationHandoffRecord{
-		sourceRecordID:         sourceRecordID,
-		intentID:               normalized.intentID,
-		providerDeliverySignal: normalized.providerDeliverySignal,
-		providerObservedAt:     providerObservedAt,
-		providerEventID:        providerEventID,
-		receivedAt:             receivedAt,
-		effectiveAt:            effectiveAt,
-		ingressSource:          webhookIngressSourceProviderSignalWebhook,
-	}
-	if err := i.writeCorrelationHandoff(ctx, tx, handoffRecord); err != nil {
-		return WebhookIngestionResult{}, WrapProcessingStageError(ProcessingStageCorrelationHandoff, err)
-	}
-
 	if err := tx.Commit(); err != nil {
-		return WebhookIngestionResult{}, WrapProcessingStageError(ProcessingStageCorrelationHandoff, err)
+		return WebhookIngestionResult{}, WrapProcessingStageError(ProcessingStageWebhookIngestion, err)
 	}
 
 	result := WebhookIngestionResult{
@@ -276,35 +251,6 @@ func (s *sqlStore) insertWebhookIngestionRecord(ctx context.Context, tx *sql.Tx,
 	_, err := tx.ExecContext(
 		ctx,
 		`INSERT INTO dbo.intent_delivery_webhook_ingestion (
-      source_record_id,
-      intent_id,
-      provider_delivery_signal,
-      provider_observed_at,
-      provider_event_id,
-      received_at,
-      effective_at,
-      ingress_source,
-      created_at
-    ) VALUES (
-      @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9
-    )`,
-		record.sourceRecordID,
-		record.intentID,
-		string(record.providerDeliverySignal),
-		record.providerObservedAt,
-		record.providerEventID,
-		record.receivedAt,
-		record.effectiveAt,
-		record.ingressSource,
-		record.receivedAt,
-	)
-	return err
-}
-
-func (s *sqlStore) insertWebhookCorrelationHandoff(ctx context.Context, tx *sql.Tx, record webhookCorrelationHandoffRecord) error {
-	_, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO dbo.intent_delivery_correlation_handoff (
       source_record_id,
       intent_id,
       provider_delivery_signal,

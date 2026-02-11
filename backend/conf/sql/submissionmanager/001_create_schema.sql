@@ -243,30 +243,3 @@ BEGIN
   CREATE UNIQUE INDEX uq_intent_delivery_webhook_ingestion_source_record
     ON dbo.intent_delivery_webhook_ingestion(source_record_id);
 END;
-
-IF OBJECT_ID('dbo.intent_delivery_correlation_handoff', 'U') IS NULL
-BEGIN
-  CREATE TABLE dbo.intent_delivery_correlation_handoff (
-    handoff_id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    source_record_id NVARCHAR(200) NOT NULL,
-    intent_id NVARCHAR(200) NOT NULL,
-    provider_delivery_signal NVARCHAR(32) NOT NULL,
-    provider_observed_at DATETIME2(7) NULL,
-    provider_event_id NVARCHAR(200) NULL,
-    received_at DATETIME2(7) NOT NULL,
-    effective_at DATETIME2(7) NOT NULL,
-    ingress_source NVARCHAR(64) NOT NULL,
-    created_at DATETIME2(7) NOT NULL
-  );
-END;
-
-IF NOT EXISTS (
-  SELECT 1
-  FROM sys.indexes
-  WHERE name = 'uq_intent_delivery_correlation_handoff_source_record'
-    AND object_id = OBJECT_ID('dbo.intent_delivery_correlation_handoff')
-)
-BEGIN
-  CREATE UNIQUE INDEX uq_intent_delivery_correlation_handoff_source_record
-    ON dbo.intent_delivery_correlation_handoff(source_record_id);
-END;

@@ -81,6 +81,36 @@ func TestDeliveryApplyCorrelationGating(t *testing.T) {
 	}
 }
 
+func TestCorrelateByIntentID(t *testing.T) {
+	store, _ := newDeliveryStore(t)
+	now := time.Date(2026, 2, 11, 1, 1, 0, 0, time.UTC)
+	insertDeliveryIntent(t, store, "intent-correlate", submission.DeliveryTrackingModeOn, 120, now.Add(-time.Minute))
+
+	matched, err := store.correlateByIntentID(context.Background(), "intent-correlate")
+	if err != nil {
+		t.Fatalf("correlate matched: %v", err)
+	}
+	if matched != DeliveryCorrelationMatched {
+		t.Fatalf("expected matched, got %q", matched)
+	}
+
+	unmatched, err := store.correlateByIntentID(context.Background(), "intent-missing")
+	if err != nil {
+		t.Fatalf("correlate unmatched: %v", err)
+	}
+	if unmatched != DeliveryCorrelationUnmatched {
+		t.Fatalf("expected unmatched, got %q", unmatched)
+	}
+
+	invalid, err := store.correlateByIntentID(context.Background(), "   ")
+	if err != nil {
+		t.Fatalf("correlate invalid: %v", err)
+	}
+	if invalid != DeliveryCorrelationInvalid {
+		t.Fatalf("expected invalid, got %q", invalid)
+	}
+}
+
 func TestDeliveryApplyModeOffNoMutation(t *testing.T) {
 	store, db := newDeliveryStore(t)
 	now := time.Date(2026, 2, 11, 1, 5, 0, 0, time.UTC)

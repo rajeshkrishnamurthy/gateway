@@ -45,9 +45,6 @@ func TestWebhookIngestRequiredFieldValidation(t *testing.T) {
 			if countWebhookIngestionRows(t, db, "intent-1") != 0 {
 				t.Fatalf("expected no ingestion rows for invalid payload")
 			}
-			if countWebhookCorrelationHandoffRows(t, db, "intent-1") != 0 {
-				t.Fatalf("expected no handoff rows for invalid payload")
-			}
 		})
 	}
 }
@@ -74,6 +71,9 @@ func TestWebhookIngestMalformedProviderObservedAtFallbackAccepted(t *testing.T) 
 	}
 	if !normalizeDBTime(row.effectiveAt).Equal(normalizeDBTime(row.receivedAt)) {
 		t.Fatalf("expected stored effective_at to match received_at on fallback")
+	}
+	if row.ingressSource != webhookIngressSourceProviderSignalWebhook {
+		t.Fatalf("expected ingress source %q, got %q", webhookIngressSourceProviderSignalWebhook, row.ingressSource)
 	}
 }
 
@@ -102,15 +102,15 @@ func TestWebhookIngestNormalizationUTCAndTimestampPrecedence(t *testing.T) {
 	if withObserved.ReceivedAt.Location() != time.UTC {
 		t.Fatalf("expected receivedAt UTC, got %s", withObserved.ReceivedAt.Location())
 	}
-	handoffObserved := loadWebhookCorrelationHandoffRowBySource(t, db, withObserved.SourceRecordID)
-	if !handoffObserved.providerObservedAt.Valid {
-		t.Fatalf("expected handoff provider_observed_at set")
+	ingressObserved := loadWebhookIngestionRowBySource(t, db, withObserved.SourceRecordID)
+	if !ingressObserved.providerObservedAt.Valid {
+		t.Fatalf("expected ingress provider_observed_at set")
 	}
-	if !normalizeDBTime(handoffObserved.effectiveAt).Equal(expectedObservedUTC) {
-		t.Fatalf("expected handoff effective_at to use providerObservedAt, got %s", normalizeDBTime(handoffObserved.effectiveAt))
+	if !normalizeDBTime(ingressObserved.effectiveAt).Equal(expectedObservedUTC) {
+		t.Fatalf("expected ingress effective_at to use providerObservedAt, got %s", normalizeDBTime(ingressObserved.effectiveAt))
 	}
-	if handoffObserved.ingressSource != webhookIngressSourceProviderSignalWebhook {
-		t.Fatalf("expected ingress source %q, got %q", webhookIngressSourceProviderSignalWebhook, handoffObserved.ingressSource)
+	if ingressObserved.ingressSource != webhookIngressSourceProviderSignalWebhook {
+		t.Fatalf("expected ingress source %q, got %q", webhookIngressSourceProviderSignalWebhook, ingressObserved.ingressSource)
 	}
 
 	withoutObserved, err := ingestor.IngestProviderSignalWebhook(context.Background(), []byte(`{
@@ -126,22 +126,23 @@ func TestWebhookIngestNormalizationUTCAndTimestampPrecedence(t *testing.T) {
 	if !withoutObserved.EffectiveAt.Equal(withoutObserved.ReceivedAt) {
 		t.Fatalf("expected effectiveAt to fall back to receivedAt, got effectiveAt=%s receivedAt=%s", withoutObserved.EffectiveAt, withoutObserved.ReceivedAt)
 	}
-	handoffNoObserved := loadWebhookCorrelationHandoffRowBySource(t, db, withoutObserved.SourceRecordID)
-	if handoffNoObserved.providerObservedAt.Valid {
-		t.Fatalf("expected handoff provider_observed_at NULL")
+	ingressNoObserved := loadWebhookIngestionRowBySource(t, db, withoutObserved.SourceRecordID)
+	if ingressNoObserved.providerObservedAt.Valid {
+		t.Fatalf("expected ingress provider_observed_at NULL")
 	}
-	if !normalizeDBTime(handoffNoObserved.effectiveAt).Equal(normalizeDBTime(handoffNoObserved.receivedAt)) {
-		t.Fatalf("expected handoff effective_at to equal received_at when providerObservedAt absent")
+	if !normalizeDBTime(ingressNoObserved.effectiveAt).Equal(normalizeDBTime(ingressNoObserved.receivedAt)) {
+		t.Fatalf("expected ingress effective_at to equal received_at when providerObservedAt absent")
 	}
 }
 
-func TestWebhookIngestPersistenceAndHandoffAreAtomic(t *testing.T) {
+func TestWebhookIngestPersistenceRollbackOnError(t *testing.T) {
 	ingestor, db := newWebhookIngestor(t)
-	ingestor.writeCorrelationHandoff = func(ctx context.Context, tx *sql.Tx, record webhookCorrelationHandoffRecord) error {
-		_ = ctx
-		_ = tx
-		_ = record
-		return errors.New("forced handoff failure")
+	original := ingestor.writeIngressRecord
+	ingestor.writeIngressRecord = func(ctx context.Context, tx *sql.Tx, record webhookIngestionRecord) error {
+		if err := original(ctx, tx, record); err != nil {
+			return err
+		}
+		return errors.New("forced ingestion failure")
 	}
 
 	_, err := ingestor.IngestProviderSignalWebhook(context.Background(), []byte(`{
@@ -149,13 +150,10 @@ func TestWebhookIngestPersistenceAndHandoffAreAtomic(t *testing.T) {
   "providerDeliverySignal":"in_progress"
 }`))
 	if err == nil {
-		t.Fatal("expected handoff failure")
+		t.Fatal("expected ingestion failure")
 	}
 	if countWebhookIngestionRows(t, db, "intent-atomic") != 0 {
 		t.Fatalf("expected no ingestion rows after rollback")
-	}
-	if countWebhookCorrelationHandoffRows(t, db, "intent-atomic") != 0 {
-		t.Fatalf("expected no handoff rows after rollback")
 	}
 }
 
@@ -181,9 +179,6 @@ func TestWebhookIngestDuplicateReplayAccepted(t *testing.T) {
 	if countWebhookIngestionRows(t, db, "intent-dup") != 2 {
 		t.Fatalf("expected duplicate/replay payload to produce 2 ingestion rows")
 	}
-	if countWebhookCorrelationHandoffRows(t, db, "intent-dup") != 2 {
-		t.Fatalf("expected duplicate/replay payload to produce 2 handoff rows")
-	}
 }
 
 func newWebhookIngestor(t *testing.T) (*WebhookIngestor, *sql.DB) {
@@ -206,57 +201,25 @@ func countWebhookIngestionRows(t *testing.T, db *sql.DB, intentID string) int {
 	return count
 }
 
-func countWebhookCorrelationHandoffRows(t *testing.T, db *sql.DB, intentID string) int {
-	t.Helper()
-	row := db.QueryRowContext(context.Background(), `SELECT COUNT(1) FROM dbo.intent_delivery_correlation_handoff WHERE intent_id = @p1`, intentID)
-	var count int
-	if err := row.Scan(&count); err != nil {
-		t.Fatalf("count handoff rows: %v", err)
-	}
-	return count
-}
-
 type webhookIngestionRow struct {
-	providerObservedAt sql.NullTime
-	receivedAt         time.Time
-	effectiveAt        time.Time
-}
-
-func loadWebhookIngestionRowBySource(t *testing.T, db *sql.DB, sourceRecordID string) webhookIngestionRow {
-	t.Helper()
-	row := db.QueryRowContext(
-		context.Background(),
-		`SELECT provider_observed_at, received_at, effective_at
-     FROM dbo.intent_delivery_webhook_ingestion
-     WHERE source_record_id = @p1`,
-		sourceRecordID,
-	)
-	var result webhookIngestionRow
-	if err := row.Scan(&result.providerObservedAt, &result.receivedAt, &result.effectiveAt); err != nil {
-		t.Fatalf("load ingestion row: %v", err)
-	}
-	return result
-}
-
-type webhookCorrelationHandoffRow struct {
 	providerObservedAt sql.NullTime
 	receivedAt         time.Time
 	effectiveAt        time.Time
 	ingressSource      string
 }
 
-func loadWebhookCorrelationHandoffRowBySource(t *testing.T, db *sql.DB, sourceRecordID string) webhookCorrelationHandoffRow {
+func loadWebhookIngestionRowBySource(t *testing.T, db *sql.DB, sourceRecordID string) webhookIngestionRow {
 	t.Helper()
 	row := db.QueryRowContext(
 		context.Background(),
 		`SELECT provider_observed_at, received_at, effective_at, ingress_source
-     FROM dbo.intent_delivery_correlation_handoff
+     FROM dbo.intent_delivery_webhook_ingestion
      WHERE source_record_id = @p1`,
 		sourceRecordID,
 	)
-	var result webhookCorrelationHandoffRow
+	var result webhookIngestionRow
 	if err := row.Scan(&result.providerObservedAt, &result.receivedAt, &result.effectiveAt, &result.ingressSource); err != nil {
-		t.Fatalf("load handoff row: %v", err)
+		t.Fatalf("load ingestion row: %v", err)
 	}
 	return result
 }

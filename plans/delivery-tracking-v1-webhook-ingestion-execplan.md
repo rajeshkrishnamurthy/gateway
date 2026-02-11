@@ -1,152 +1,157 @@
-# Delivery Tracking V1 Webhook Ingestion Implementation
+# Delivery Tracking V1 Webhook Ingestion Contract-Closure Update
 
 This execplan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-This document is maintained in accordance with `/Users/rajeshk/code/go/go-toolkit/setu/backend/PLANS.md`.
+This document is maintained in accordance with `backend/PLANS.md`.
 
 EXECPLAN-READY
 
 ## Purpose / Big Picture
 
-After this change, Setu will accept trusted-ingress provider delivery webhook payloads, normalize them deterministically, persist normalized ingestion records, and perform deterministic correlation handoff in the same SQL transaction. Invalid normalized payloads will return `400`-class responses, and transient internal failures will return `503`-class responses. This allows the delivery-tracking path to start from a stable webhook-ingestion boundary without introducing async queue workers or security hardening in this round.
+After this change, a valid `provider signal webhook` request no longer stops at ingress persistence plus handoff-table writes. Instead, the runtime now performs a two-boundary synchronous pipeline: it first commits ingress-audit persistence, then immediately runs correlation plus core-processing apply in the same HTTP request path. This makes webhook ingress contract-closed: accepted writes can now drive canonical delivery read visibility without any persisted queue/handoff stage.
 
-A novice can verify the result by running targeted tests in `/Users/rajeshk/code/go/go-toolkit/setu/backend/deliverytracking` and `/Users/rajeshk/code/go/go-toolkit/setu/backend/cmd/submission-manager` that demonstrate validation behavior, malformed `providerObservedAt` fallback, timestamp precedence propagation, duplicate/replay acceptance, and transaction rollback on handoff failure.
+A novice can verify this by posting one `in_progress` webhook for an existing intent and then reading `/v1/intents/{intentId}/delivery` to see `deliveryStatus=in_progress` and `deliveryFreshness=fresh`.
 
 ## Progress
 
-- [x] (2026-02-11 03:26Z) Read all required EXEC inputs in the mandated order for webhook-ingestion slice.
-- [x] (2026-02-11 03:26Z) Mapped current code boundaries: HTTP adapter (`cmd/submission-manager`) and delivery domain core (`backend/deliverytracking`).
-- [x] (2026-02-11 03:31Z) Implemented delivery webhook-ingestion core in `/Users/rajeshk/code/go/go-toolkit/setu/backend/deliverytracking/webhook_ingestion.go` with validation, normalization, timestamp precedence, atomic persistence, and typed invalid-payload errors.
-- [x] (2026-02-11 03:31Z) Added schema support in `/Users/rajeshk/code/go/go-toolkit/setu/backend/conf/sql/submissionmanager/001_create_schema.sql` for ingestion and correlation-handoff tables plus uniqueness constraints.
-- [x] (2026-02-11 03:31Z) Wired HTTP endpoint `/v1/delivery/provider-signal-webhook` in `/Users/rajeshk/code/go/go-toolkit/setu/backend/cmd/submission-manager` with deterministic `400` vs `503` mapping.
-- [x] (2026-02-11 03:32Z) Added targeted semantic tests in `/Users/rajeshk/code/go/go-toolkit/setu/backend/deliverytracking/webhook_ingestion_test.go` and `/Users/rajeshk/code/go/go-toolkit/setu/backend/cmd/submission-manager/main_test.go`.
-- [x] (2026-02-11 03:33Z) Ran focused feature tests and broader package tests; captured passing evidence and isolated unrelated pre-existing failure evidence.
-- [x] (2026-02-11 03:33Z) Finalized outcomes and blockers in this execplan.
+- [x] (2026-02-11 16:48Z) Re-read EXEC constraints and execution discipline (`AGENTS.md`, `agents/EXEC.md`, `backend/AGENTS.md`, `backend/cmd/AGENTS.md`, `backend/PLANS.md`).
+- [x] (2026-02-11 16:55Z) Audited current webhook/runtime flow and confirmed pre-change behavior persisted ingress plus correlation-handoff rows but did not synchronously invoke core apply from webhook route.
+- [x] (2026-02-11 17:08Z) Refactored `backend/deliverytracking/webhook_ingestion.go` to implement Boundary A only: validate/normalize/persist ingress-audit row and commit.
+- [x] (2026-02-11 17:12Z) Added deterministic correlation lookup by canonical `intentId` in `backend/deliverytracking/processor.go` for runtime orchestration.
+- [x] (2026-02-11 17:16Z) Wired synchronous correlation/core apply in `backend/cmd/delivery-tracking/handlers.go` and `backend/cmd/delivery-tracking/main.go`.
+- [x] (2026-02-11 17:20Z) Updated schema contract in `backend/conf/sql/submissionmanager/001_create_schema.sql` to remove creation of persisted correlation-handoff table for new databases.
+- [x] (2026-02-11 17:26Z) Updated ingestion and runtime tests for new boundary semantics and added end-to-end webhook->read visibility coverage.
+- [x] (2026-02-11 17:31Z) Ran package tests (`go test ./deliverytracking ./cmd/delivery-tracking` and `go test ./...`) and captured passing evidence.
 
 ## Surprises & Discoveries
 
-- Observation: No existing delivery webhook-ingestion endpoint or ingestion persistence model is present; current HTTP service only exposes intent routes.
-  Evidence: `/Users/rajeshk/code/go/go-toolkit/setu/backend/cmd/submission-manager/routes.go` currently registers `/v1/intents` and `/v1/intents/` only.
-- Observation: `go test` commands must run from module root `/Users/rajeshk/code/go/go-toolkit/setu/backend`; running from repository root fails with module discovery error.
-  Evidence: `go: cannot find main module, but found .git/config in /Users/rajeshk/code/go/go-toolkit/setu`.
-- Observation: A broader submission-manager test fails outside this slice and remains unrelated to webhook-ingestion behavior.
-  Evidence: `go test ./deliverytracking ./cmd/submission-manager` fails on `TestSubmitWaitSecondsEarlyReturn` (`expected early return, elapsed ~5.01s`), while all `TestDeliveryWebhook*` tests pass.
+- Observation: Existing `deliverytracking.Processor` already contained all deterministic core-processing semantics needed for synchronous webhook orchestration; only correlation classification and routing glue were missing.
+  Evidence: `backend/deliverytracking/processor.go` already had complete matched/unmatched/invalid no-op and atomic mutation handling.
+
+- Observation: The previous webhook runtime tests asserted `correlation_handoff` stage metrics and no-ingress rollback semantics on downstream failures, which no longer matched the two-boundary model.
+  Evidence: `backend/cmd/delivery-tracking/main_test.go` pre-change `TestDeliveryRuntimeWebhookTransientFailureMappedTo503AndNoPartialCommit` dropped `intent_delivery_correlation_handoff` and expected zero ingress rows.
 
 ## Decision Log
 
-- Decision: Keep webhook-ingestion domain logic in `backend/deliverytracking` and keep `cmd/submission-manager` as a pure HTTP adapter.
-  Rationale: Matches explicit context separation between submission and delivery domains and complies with `backend/cmd/AGENTS.md` handler boundary rules.
+- Decision: Keep webhook ingress persistence and downstream apply as two explicit boundaries in one request path, rather than reintroducing one large transaction across ingress and domain apply.
+  Rationale: This directly implements the updated webhook design: ingress-audit evidence must remain durable even when downstream apply fails.
   Date/Author: 2026-02-11 / Codex
-- Decision: For accepted payloads, generate `receivedAt` using `SYSUTCDATETIME()` inside the same transaction and derive `effectiveAt` as `providerObservedAt` when valid, else `receivedAt`.
-  Rationale: Enforces design timestamp precedence and keeps persisted times deterministic across multi-instance ingestion.
+
+- Decision: Classify webhook correlation result via direct `intentId` existence lookup (`matched`/`unmatched`/`invalid`) before invoking `ApplyCorrelatedDeliveryRecord`.
+  Rationale: This preserves canonical correlation semantics and prevents unknown intents from surfacing as internal errors.
   Date/Author: 2026-02-11 / Codex
-- Decision: Do not perform ingestion-level duplicate suppression; each valid payload instance receives a new generated `sourceRecordId` and is persisted.
-  Rationale: Frozen design explicitly requires duplicate/replay acceptance at ingestion.
-  Date/Author: 2026-02-11 / Codex
-- Decision: Map `InvalidWebhookPayloadError` to `400 invalid_request`; map all other ingestion failures to `503 service_unavailable`.
-  Rationale: Preserves deterministic boundary classification required by design and avoids leaking internal persistence errors as client faults.
+
+- Decision: Remove schema creation for `intent_delivery_correlation_handoff` in the bootstrap migration file while retaining backward compatibility for already-provisioned databases.
+  Rationale: V1 now has no persisted handoff stage; new environments should not create an unused handoff artifact.
   Date/Author: 2026-02-11 / Codex
 
 ## Outcomes & Retrospective
 
-Webhook-ingestion slice implementation is complete for trusted ingress scope. The service now accepts provider webhook payloads, validates and normalizes required fields, tolerates malformed `providerObservedAt` by omitting it, persists ingestion and correlation-handoff records atomically, and returns deterministic HTTP classes (`400` invalid payload, `503` transient internal failure, `202` accepted for valid ingress). This behavior is implemented in `/Users/rajeshk/code/go/go-toolkit/setu/backend/deliverytracking/webhook_ingestion.go` and wired through `/Users/rajeshk/code/go/go-toolkit/setu/backend/cmd/submission-manager/handlers.go`.
+Implemented outcomes:
 
-All semantic-critical tests for this slice pass. A non-slice test failure (`TestSubmitWaitSecondsEarlyReturn`) remains in broader `cmd/submission-manager` runs and is documented as unrelated evidence rather than changed behavior in this work.
+- Webhook ingestion now owns only Boundary A persistence in `backend/deliverytracking/webhook_ingestion.go`.
+- Runtime now synchronously executes correlation plus core apply after successful ingress commit in `backend/cmd/delivery-tracking/handlers.go`.
+- Downstream processing failures now return `503` while preserving ingress-audit rows.
+- Unmatched `intentId` webhook requests are accepted (`202`), persisted as ingress evidence, and remain no-op for delivery state/history mutation.
+- End-to-end contract closure is now demonstrated in tests: accepted webhook input updates canonical read API outcomes.
+
+Remaining gap:
+
+- Frozen specs in this checkout still use older handoff wording; this implementation follows the approved design-change direction and keeps behavior deterministic, but any spec text harmonization should be handled in a SPEC session.
 
 ## Context and Orientation
 
-The existing delivery core-processing implementation remains in `/Users/rajeshk/code/go/go-toolkit/setu/backend/deliverytracking/processor.go` and still applies normalized correlated signals transactionally. This webhook-ingestion slice adds a separate ingress stage in `/Users/rajeshk/code/go/go-toolkit/setu/backend/deliverytracking/webhook_ingestion.go`. The submission-manager HTTP service remains the adapter boundary in `/Users/rajeshk/code/go/go-toolkit/setu/backend/cmd/submission-manager`, with route registration in `routes.go`, request adapter logic in `handlers.go`, and response shaping in `responses.go`.
+Webhook entrypoint is `POST /v1/delivery/provider-signal-webhook` in `backend/cmd/delivery-tracking/routes.go` and `backend/cmd/delivery-tracking/handlers.go`.
 
-Webhook-ingestion for this slice must stop at normalized persistence plus correlation handoff. It must not implement delivery status progression logic, read APIs, provider polling, or security hardening controls. Trusted-ingress-only behavior must remain explicit.
+Boundary A ingestion logic is in `backend/deliverytracking/webhook_ingestion.go`. It validates required fields, handles malformed optional `providerObservedAt` by omission, gets DB UTC time, generates `sourceRecordId`, and persists one row into `dbo.intent_delivery_webhook_ingestion`.
 
-In this plan, `provider signal webhook` means provider-to-Setu push ingress. `correlation handoff` means durable transfer of normalized fields to the next deterministic stage in the same transaction boundary, not asynchronous queue-worker processing.
+Downstream domain apply is implemented in `backend/deliverytracking/processor.go`. It already enforces deterministic correlation gating, mode-off no-op, idempotent history writes, terminal lock behavior, and freshness semantics.
+
+Canonical read endpoints are `/v1/intents/{intentId}/delivery` and `/v1/intents/{intentId}/delivery/history` served from `backend/cmd/delivery-tracking/handlers.go` through `backend/deliverytracking/reader.go`.
 
 ## Plan of Work
 
-Implementation followed this sequence. First, `/Users/rajeshk/code/go/go-toolkit/setu/backend/deliverytracking/webhook_ingestion.go` introduced `WebhookIngestor` with payload normalization, required field validation, optional malformed `providerObservedAt` fallback-to-omit behavior, deterministic signal-class parsing, and transactional persistence/handoff with rollback semantics.
+The implementation sequence is:
 
-Second, `/Users/rajeshk/code/go/go-toolkit/setu/backend/conf/sql/submissionmanager/001_create_schema.sql` added `intent_delivery_webhook_ingestion` and `intent_delivery_correlation_handoff` with source-record uniqueness indexes and idempotent creation guards.
+First, reduce `WebhookIngestor` responsibilities to ingress-audit persistence only and remove persisted correlation-handoff writes.
 
-Third, `/Users/rajeshk/code/go/go-toolkit/setu/backend/cmd/submission-manager/routes.go`, `/Users/rajeshk/code/go/go-toolkit/setu/backend/cmd/submission-manager/handlers.go`, `/Users/rajeshk/code/go/go-toolkit/setu/backend/cmd/submission-manager/responses.go`, and `/Users/rajeshk/code/go/go-toolkit/setu/backend/cmd/submission-manager/main.go` wired the endpoint and mapped invalid payloads to `400` and transient internal failures to `503`.
+Second, add explicit correlation classification by canonical key (`intentId`) in the processor layer so the webhook path can choose `matched` vs `unmatched` deterministically.
 
-Fourth, targeted tests were added in `/Users/rajeshk/code/go/go-toolkit/setu/backend/deliverytracking/webhook_ingestion_test.go` and `/Users/rajeshk/code/go/go-toolkit/setu/backend/cmd/submission-manager/main_test.go` for semantic-critical behaviors from the frozen design.
+Third, wire synchronous orchestration in the HTTP handler: ingest, classify correlation, apply core processing, then respond.
 
-Finally, focused tests and broader package runs were executed and captured below.
+Fourth, update tests to reflect two-boundary failure semantics and to prove contract closure from webhook write to delivery read.
+
+Finally, run focused and broad tests and record evidence.
 
 ## Concrete Steps
 
-From `/Users/rajeshk/code/go/go-toolkit/setu`:
+From repository root (`/Users/rajeshk/.codex/worktrees/47cb/setu`):
 
-1. Add ingestion core files and tests under `backend/deliverytracking`.
-2. Update SQL schema in `backend/conf/sql/submissionmanager/001_create_schema.sql`.
-3. Add HTTP route and handler wiring in `backend/cmd/submission-manager`.
-4. Change working directory to `/Users/rajeshk/code/go/go-toolkit/setu/backend` (Go module root).
-5. Run:
-   `go test ./deliverytracking -run 'TestWebhookIngest'`
-6. Run:
-   `go test ./cmd/submission-manager -run 'TestDeliveryWebhook'`
+1. Edit `backend/deliverytracking/webhook_ingestion.go` to remove handoff persistence and keep only ingress write transaction.
+2. Edit `backend/deliverytracking/processor.go` to add `CorrelateByIntentID`.
+3. Edit `backend/cmd/delivery-tracking/main.go` and `backend/cmd/delivery-tracking/handlers.go` to inject processor and execute synchronous downstream apply.
+4. Edit `backend/conf/sql/submissionmanager/001_create_schema.sql` to remove new-database creation of `intent_delivery_correlation_handoff`.
+5. Update tests in:
+   - `backend/deliverytracking/webhook_ingestion_test.go`
+   - `backend/deliverytracking/processor_test.go`
+   - `backend/cmd/delivery-tracking/main_test.go`
+6. Run from `/Users/rajeshk/.codex/worktrees/47cb/setu/backend`:
+   `go test ./deliverytracking -run 'TestWebhookIngest|TestCorrelateByIntentID'`
 7. Run:
-   `go test ./deliverytracking ./cmd/submission-manager`
-8. Isolate unrelated broader-suite failure evidence:
-   `go test ./cmd/submission-manager -run '^TestSubmitWaitSecondsEarlyReturn$' -count=1`
-
-Expected outcome: webhook-ingestion tests pass and prove deterministic behavior per frozen design; one unrelated pre-existing `TestSubmitWaitSecondsEarlyReturn` failure may still appear in broader submission-manager runs.
+   `go test ./cmd/delivery-tracking -run 'TestDeliveryRuntimeWebhook'`
+8. Run:
+   `go test ./deliverytracking ./cmd/delivery-tracking`
+9. Run:
+   `go test ./...`
 
 ## Validation and Acceptance
 
-Acceptance is demonstrated by tests that prove:
+Acceptance is demonstrated when all of the following are true:
 
-- required field validation rejects invalid payloads (`400` class at HTTP adapter).
-- malformed `providerObservedAt` is accepted and omitted from normalized record/handoff.
-- normalization output stores UTC timestamps.
-- effective time precedence uses valid `providerObservedAt`, otherwise `receivedAt`.
-- ingestion persistence and correlation handoff are atomic in one transaction; no partial commit on failure.
-- duplicate/replayed valid payloads are accepted (no ingestion-level suppression).
-- transient internal failures map to `503` class at HTTP adapter.
+- Invalid webhook payloads still return `400` and produce no ingress row.
+- Malformed optional `providerObservedAt` is tolerated and falls back to `receivedAt` effective time.
+- A valid webhook for an existing intent returns `202`, persists one ingress row, and changes canonical read visibility (`delivery` and `delivery/history`).
+- A valid webhook for an unknown intent returns `202`, persists ingress evidence, and does not mutate delivery state/history.
+- Downstream core-processing failure after ingress commit returns `503` while keeping the ingress row persisted.
 
 ## Idempotence and Recovery
 
-Schema changes are idempotent via `IF OBJECT_ID`/`IF NOT EXISTS` guards. Ingestion intentionally does not deduplicate payloads, so repeated valid requests produce additional accepted records by design. If handoff fails, transaction rollback leaves no partial ingestion record for that request.
+Schema and code changes are safe to rerun in a fresh workspace. Runtime behavior remains deterministic under duplicate webhook requests because each accepted ingress receives a unique `sourceRecordId`, while downstream domain idempotency is enforced by `(intentId, sourceRecordId)` in delivery history.
+
+If downstream apply fails transiently, retrying the webhook request creates a new ingress row and a new downstream attempt, which is expected for this V1 boundary model.
 
 ## Artifacts and Notes
 
-Test evidence from `/Users/rajeshk/code/go/go-toolkit/setu/backend`:
+Validation evidence from `/Users/rajeshk/.codex/worktrees/47cb/setu/backend`:
 
-    $ go test ./deliverytracking -run 'TestWebhookIngest'
-    ok  	gateway/deliverytracking	(cached)
+  $ go test ./deliverytracking -run 'TestWebhookIngest|TestCorrelateByIntentID'
+  ok   gateway/deliverytracking  0.590s
 
-    $ go test ./cmd/submission-manager -run 'TestDeliveryWebhook'
-    ok  	gateway/cmd/submission-manager	(cached)
+  $ go test ./cmd/delivery-tracking -run 'TestDeliveryRuntimeWebhook'
+  ok   gateway/cmd/delivery-tracking  1.015s
 
-    $ go test ./deliverytracking ./cmd/submission-manager
-    ok  	gateway/deliverytracking	(cached)
-    --- FAIL: TestSubmitWaitSecondsEarlyReturn (5.28s)
-        main_test.go:253: expected early return, elapsed 5.010023209s
-    FAIL
-    FAIL	gateway/cmd/submission-manager	9.765s
-    FAIL
+  $ go test ./deliverytracking ./cmd/delivery-tracking
+  ok   gateway/deliverytracking       0.388s
+  ok   gateway/cmd/delivery-tracking  0.217s
 
-    $ go test ./cmd/submission-manager -run '^TestSubmitWaitSecondsEarlyReturn$' -count=1
-    --- FAIL: TestSubmitWaitSecondsEarlyReturn (5.35s)
-        main_test.go:253: expected early return, elapsed 5.012374875s
-    FAIL
-    FAIL	gateway/cmd/submission-manager	5.570s
-    FAIL
+  $ go test ./...
+  ok   gateway/... (all packages passed)
 
 ## Interfaces and Dependencies
 
-No new external dependencies are introduced.
+No new external dependencies were added.
 
-Implemented core interface and types in `/Users/rajeshk/code/go/go-toolkit/setu/backend/deliverytracking`:
+Key interfaces after this implementation:
 
-- `WebhookIngestor` with method:
-  - `IngestProviderSignalWebhook(ctx context.Context, rawPayload []byte) (WebhookIngestionResult, error)`
-- `InvalidWebhookPayloadError` to distinguish `400` class failures from transient `503` class failures.
-- `WebhookIngestionResult` carrying normalized handoff fields (`intentId`, `providerDeliverySignal`, `providerObservedAt` optional, `receivedAt`, source metadata, generated `sourceRecordId`, and effective-time propagation field).
+- `deliverytracking.WebhookIngestor.IngestProviderSignalWebhook(ctx, rawPayload)`
+  returns normalized ingress result after ingress-audit persistence commit.
 
-`/Users/rajeshk/code/go/go-toolkit/setu/backend/cmd/submission-manager` now calls this core directly and only performs HTTP parsing plus response/error mapping for `/v1/delivery/provider-signal-webhook`.
+- `deliverytracking.Processor.CorrelateByIntentID(ctx, intentID)`
+  classifies canonical correlation result as `matched`, `unmatched`, or `invalid`.
+
+- `deliverytracking.Processor.ApplyCorrelatedDeliveryRecord(ctx, record)`
+  applies deterministic core-processing semantics and no-op gating using the classified correlation result.
 
 ---
 
-Revision note (2026-02-11 / Codex): Initial webhook-ingestion execplan created after mandated read order and boundary reconnaissance.
-Revision note (2026-02-11 / Codex): Updated living sections after implementation, recorded deterministic design decisions and concrete test evidence, and documented unrelated broader-suite failure isolation.
+Revision note (2026-02-11 / Codex): Rewrote this execplan to match the approved two-boundary webhook design and to capture implementation evidence for synchronous contract closure from webhook ingress to canonical read behavior.
