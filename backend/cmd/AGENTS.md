@@ -21,3 +21,8 @@ Rules for HTTP entrypoints under `cmd/`.
 - `main.go` must be limited to wiring dependencies and starting the server.
 - Core packages must not depend on `net/http`.
 - UI handlers must be registered alongside other HTTP routes, not in core packages.
+
+## Endpoint Contract Closure (Strict)
+- Write endpoints that return accepted/success for domain events must be wired to the downstream domain-application path required by frozen specs, not only to boundary persistence.
+- If an endpoint is intentionally limited to handoff persistence by frozen SPEC/DESIGN, that limitation must be explicit in the execplan and in route-level acceptance evidence.
+- For paired write/read contracts in the same domain slice set, include at least one executable test path showing write-side effects (or specified no-op semantics) on the canonical read endpoint.

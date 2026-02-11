@@ -153,6 +153,19 @@ EXEC must not add “mindless” tests solely to improve coverage metrics.
 
 ---
 
+## Cross-Slice Contract Closure (Mandatory)
+
+When a feature is split across slices that form one runtime pipeline (for example ingress -> handoff -> correlation -> core apply -> read API), EXEC must prove contract closure before declaring completion.
+
+Rules:
+
+* The execplan must map each intermediate persisted handoff artifact to its deterministic runtime consumer.
+* EXEC must not mark a slice complete if it writes intermediate handoff records but no consumer path is wired into the running system.
+* If frozen SPEC/DESIGN explicitly defers a downstream consumer, the execplan must call that out as an open gap and must not claim end-to-end behavior that depends on the deferred stage.
+* Validation evidence must include at least one end-to-end scenario for each claimed contract path from accepted write/ingress input to client-visible read outcome (including expected no-op outcomes such as mode-off or unmatched where relevant).
+
+---
+
 ## Completion
 
 EXEC is complete when:

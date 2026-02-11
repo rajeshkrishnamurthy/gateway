@@ -63,6 +63,12 @@ When writing complex features or significant refactors, use an execplan (as desc
 - Treat `specs/` as canonical for system semantics.
 - When behavior or semantics change, update the relevant specs/README in the same change.
 
+## Contract Closure (Pipelines)
+- For multi-stage runtime pipelines, each persisted handoff artifact written by one stage must have an explicit deterministic consumer in runtime code.
+- Writing ingress or handoff records alone is not feature completion when the frozen spec requires downstream state projection and/or read visibility.
+- Before claiming completion, provide executable evidence of at least one end-to-end contract path from accepted write/ingress input to the corresponding canonical read outcome.
+- If a downstream consumer is explicitly deferred by frozen SPEC/DESIGN, keep the gap explicit in the execplan and avoid claiming the deferred user-visible behavior as complete.
+
 ## Comments (Strict, drift-resistant)
 - Purpose: comments must capture intent or constraints that are not obvious from code alone. Anything else belongs in specs/README.
 - Package-level doc comments (for godoc) are allowed and should summarize module purpose and boundaries.
