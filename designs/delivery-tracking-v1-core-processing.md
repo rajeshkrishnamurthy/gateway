@@ -6,6 +6,7 @@ This design is limited to the delivery core processing slice from correlated sig
 ## Inputs
 - `specs/delivery-tracking/delivery-tracking-v1.md`
 - `specs/delivery-tracking/delivery-tracking-v1-core-processing.md`
+- `specs/delivery-tracking/delivery-tracking-v1-service-topology.md`
 - Foundational delivery-tracking specs:
   - `specs/delivery-tracking/overview.md`
   - `specs/delivery-tracking/delivery-status-model.md`
@@ -232,6 +233,7 @@ Constraints that must hold:
 - `mode=off` never mutates delivery status/freshness.
 - `unmatched`/`invalid` never mutate delivery status/freshness.
 - Current delivery status and freshness remain derivable from persisted projection + history under the above rules.
+- Correctness must hold under multi-instance delivery-tracking runtime execution behind HAProxy without sticky-session dependence.
 
 ## ADR (Concise)
 - ADR-001: Use transactional project-on-write with one current-state row plus append history row per accepted correlated signal.

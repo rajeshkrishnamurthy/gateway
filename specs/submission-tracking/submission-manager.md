@@ -29,6 +29,8 @@ submissionTarget is data-driven and selects a contract. It is the contract ident
 
 SubmissionManager owns time and attempts. It executes the first attempt immediately, schedules retries only if the contract allows, and completes intents as ACCEPTED, REJECTED, or EXHAUSTED. While execution is in progress, intents remain in PENDING. It does not reinterpret gateway semantics and does not reason about delivery after acceptance.
 
+SubmissionManager remains submission-only. It must not own `delivery read API` routes and must not own `provider signal webhook` ingress for delivery tracking.
+
 #### Execution engine
 
 SubmissionManager executes intents and persists state in SQL Server for intents, attempts, and scheduling metadata. It resolves submissionTarget into a contract snapshot at submission time and stores that snapshot on the intent. Routing is explicit: the resolved gatewayType and gatewayUrl are passed into the executor, and execution does not re-resolve them.
@@ -86,6 +88,8 @@ Endpoints:
   Response JSON includes intentId, submissionTarget, createdAt, status, completedAt (when terminal), rejectedReason (when rejected), and exhaustedReason (when exhausted). Status values are: pending, accepted, rejected, exhausted.
 - GET `/v1/intents/{intentId}` returns the current intent state or 404 if unknown.
 - GET `/v1/intents/{intentId}/history` returns the current intent state plus the ordered attempt history. The response includes an `intent` object (same shape as `/v1/intents/{intentId}`) and an `attempts` array (attemptNumber, startedAt, finishedAt, outcomeStatus, outcomeReason, error).
+
+SubmissionManager must not expose delivery-tracking routes (`GET /v1/intents/{intentId}/delivery`, `GET /v1/intents/{intentId}/delivery/history`) and must not expose provider delivery webhook ingress.
 
 Error mapping:
 

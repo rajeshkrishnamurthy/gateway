@@ -10,9 +10,13 @@ This slice is functional-only for security in the current round and must be trea
 
 This slice covers provider-to-Setu push ingress for provider delivery signals, including boundary validation, normalization into an internal handoff contract, and deterministic handoff to correlation. Ingress in this slice is webhook-only. `provider signal poll` is explicitly out of scope in this round. Gateway/provider adapters may expose provider-specific webhook payload shapes, but every accepted payload must be normalized before entering correlation.
 
+Webhook ingress in this slice is owned by delivery-tracking runtime instances behind HAProxy and is not hosted by SubmissionManager.
+
 ## Non-goals
 
 This slice does not define `provider signal poll` behavior, delivery-status progression rules, delivery-freshness progression rules, delivery read API contracts, or full webhook security hardening. This slice also does not define provider-specific business semantics as public contract behavior.
+
+This slice does not provide backward-compatible provider-signal webhook hosting through SubmissionManager.
 
 ## Normative Inheritance
 
@@ -27,6 +31,8 @@ Before correlation, each accepted webhook payload must be normalized into one in
 ## Invariants
 
 Only normalized records with required fields are eligible for downstream correlation. Invalid payloads are rejected before correlation handoff. Ingress source identity is preserved as `provider signal webhook` in downstream audit/observability metadata.
+
+`provider signal webhook` ingress endpoint ownership is exclusive to delivery-tracking runtime and must not be dual-served by SubmissionManager.
 
 ## Race Conditions and Handling
 
@@ -55,3 +61,5 @@ Criterion 3: ingestion output includes source metadata identifying `provider sig
 Criterion 4: `provider signal poll` is not implemented in this slice.
 
 Criterion 5: the slice explicitly documents trusted-ingress-only operation and blocks production internet exposure until webhook security hardening is completed.
+
+Criterion 6: provider delivery webhook ingress is served by delivery-tracking runtime behind HAProxy and is not served by SubmissionManager.

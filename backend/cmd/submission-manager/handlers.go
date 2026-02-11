@@ -146,6 +146,10 @@ func (s *apiServer) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parts := strings.Split(path, "/")
+	if len(parts) >= 2 && parts[1] == "delivery" {
+		writeError(w, http.StatusNotFound, "not_found", "not found", nil)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "history" {
 		intentID := strings.TrimSpace(parts[0])
 		if intentID == "" {

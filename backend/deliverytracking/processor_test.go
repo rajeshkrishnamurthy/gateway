@@ -522,6 +522,270 @@ func TestProcessorEvaluateDeliveryFreshnessStaleness(t *testing.T) {
 	}
 }
 
+func TestProcessorEvaluateDeliveryFreshnessStalenessNoOpWithNilContext(t *testing.T) {
+	db := newTestDB(t)
+	processor, err := NewProcessor(db)
+	if err != nil {
+		t.Fatalf("new processor: %v", err)
+	}
+
+	affected, err := processor.EvaluateDeliveryFreshnessStaleness(nil)
+	if err != nil {
+		t.Fatalf("evaluate freshness staleness with nil context: %v", err)
+	}
+	if affected != 0 {
+		t.Fatalf("expected no-op evaluator result 0, got %d", affected)
+	}
+}
+
+func TestProcessorEvaluateDeliveryFreshnessStalenessFailsWhenStateTableUnavailable(t *testing.T) {
+	db := newTestDB(t)
+	processor, err := NewProcessor(db)
+	if err != nil {
+		t.Fatalf("new processor: %v", err)
+	}
+
+	if _, err := db.ExecContext(context.Background(), `DROP TABLE dbo.intent_delivery_state`); err != nil {
+		t.Fatalf("drop delivery state table: %v", err)
+	}
+
+	if _, err := processor.EvaluateDeliveryFreshnessStaleness(context.Background()); err == nil {
+		t.Fatal("expected evaluator failure when delivery state table is unavailable")
+	}
+}
+
+func TestDeliveryApplyConcurrentFirstMatchedSignalsCreateSingleStateRow(t *testing.T) {
+	storeA, db := newDeliveryStore(t)
+	storeB, err := newSQLStore(db)
+	if err != nil {
+		t.Fatalf("new sql store: %v", err)
+	}
+
+	base := time.Date(2026, 2, 11, 5, 45, 0, 0, time.UTC)
+	insertDeliveryIntent(t, storeA, "intent-concurrent-first-state", submission.DeliveryTrackingModeOn, 120, base.Add(-time.Minute))
+
+	if got := deliveryStateRowCount(t, db, "intent-concurrent-first-state"); got != 0 {
+		t.Fatalf("expected no state row before first matched signals, got %d", got)
+	}
+
+	olderObserved := base.Add(-time.Minute)
+	newerObserved := base.Add(time.Minute)
+	older := CorrelatedDeliveryRecord{
+		SourceRecordID:     "src-concurrent-first-older",
+		IntentID:           "intent-concurrent-first-state",
+		SignalClass:        DeliverySignalInProgress,
+		ProviderObservedAt: &olderObserved,
+		ReceivedAt:         base,
+		CorrelationResult:  DeliveryCorrelationMatched,
+	}
+	newer := CorrelatedDeliveryRecord{
+		SourceRecordID:     "src-concurrent-first-newer",
+		IntentID:           "intent-concurrent-first-state",
+		SignalClass:        DeliverySignalInProgress,
+		ProviderObservedAt: &newerObserved,
+		ReceivedAt:         base.Add(time.Second),
+		CorrelationResult:  DeliveryCorrelationMatched,
+	}
+
+	errs := make([]error, 2)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		_, errs[0] = storeA.applyCorrelatedDeliveryRecord(context.Background(), older)
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		_, errs[1] = storeB.applyCorrelatedDeliveryRecord(context.Background(), newer)
+	}()
+	close(start)
+	wg.Wait()
+
+	for i, applyErr := range errs {
+		if applyErr != nil {
+			t.Fatalf("apply concurrent first matched signal %d: %v", i, applyErr)
+		}
+	}
+
+	if got := deliveryStateRowCount(t, db, "intent-concurrent-first-state"); got != 1 {
+		t.Fatalf("expected exactly one delivery state row after concurrent first signals, got %d", got)
+	}
+	if got := historyCount(t, db, "intent-concurrent-first-state"); got != 2 {
+		t.Fatalf("expected two history rows after concurrent first signals, got %d", got)
+	}
+
+	state, ok := loadDeliveryState(t, db, "intent-concurrent-first-state")
+	if !ok {
+		t.Fatal("expected delivery state row")
+	}
+	if !state.lastNonTerminalSourceRecordID.Valid || state.lastNonTerminalSourceRecordID.String != "src-concurrent-first-newer" {
+		t.Fatalf("expected deterministic convergence to newest non-terminal key, got %+v", state.lastNonTerminalSourceRecordID)
+	}
+}
+
+func TestDeliveryApplyRollbackWhenStateUpdateAffectsUnexpectedRows(t *testing.T) {
+	store, db := newDeliveryStore(t)
+	base := time.Date(2026, 2, 11, 6, 0, 0, 0, time.UTC)
+	insertDeliveryIntent(t, store, "intent-update-rollback", submission.DeliveryTrackingModeOn, 120, base.Add(-time.Minute))
+
+	firstObserved := base.Add(-time.Minute)
+	if _, err := store.applyCorrelatedDeliveryRecord(context.Background(), CorrelatedDeliveryRecord{
+		SourceRecordID:     "src-update-initial",
+		IntentID:           "intent-update-rollback",
+		SignalClass:        DeliverySignalInProgress,
+		ProviderObservedAt: &firstObserved,
+		ReceivedAt:         base,
+		CorrelationResult:  DeliveryCorrelationMatched,
+	}); err != nil {
+		t.Fatalf("apply initial in_progress: %v", err)
+	}
+	beforeHistory := historyCount(t, db, "intent-update-rollback")
+	beforeState, ok := loadDeliveryState(t, db, "intent-update-rollback")
+	if !ok {
+		t.Fatal("expected initial delivery state row")
+	}
+
+	createAfterInsertHistoryTrigger(
+		t,
+		db,
+		"trg_delete_state_before_update",
+		`DELETE s
+FROM dbo.intent_delivery_state s
+INNER JOIN inserted i ON i.intent_id = s.intent_id
+WHERE i.source_record_id = 'src-update-fail';`,
+	)
+
+	nextObserved := base.Add(2 * time.Minute)
+	_, err := store.applyCorrelatedDeliveryRecord(context.Background(), CorrelatedDeliveryRecord{
+		SourceRecordID:     "src-update-fail",
+		IntentID:           "intent-update-rollback",
+		SignalClass:        DeliverySignalInProgress,
+		ProviderObservedAt: &nextObserved,
+		ReceivedAt:         base.Add(time.Second),
+		CorrelationResult:  DeliveryCorrelationMatched,
+	})
+	if err == nil {
+		t.Fatal("expected state update row-count failure")
+	}
+	if !strings.Contains(err.Error(), "delivery state update affected unexpected row count") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := historyCount(t, db, "intent-update-rollback"); got != beforeHistory {
+		t.Fatalf("expected history rollback to preserve count=%d, got %d", beforeHistory, got)
+	}
+	afterState, ok := loadDeliveryState(t, db, "intent-update-rollback")
+	if !ok {
+		t.Fatal("expected delivery state row after rollback")
+	}
+	if !afterState.lastNonTerminalSourceRecordID.Valid || !beforeState.lastNonTerminalSourceRecordID.Valid || afterState.lastNonTerminalSourceRecordID.String != beforeState.lastNonTerminalSourceRecordID.String {
+		t.Fatalf("expected state rollback to preserve last non-terminal source, before=%+v after=%+v", beforeState.lastNonTerminalSourceRecordID, afterState.lastNonTerminalSourceRecordID)
+	}
+}
+
+func TestDeliveryApplyRollbackWhenHistoryAnnotationAffectsUnexpectedRows(t *testing.T) {
+	store, db := newDeliveryStore(t)
+	base := time.Date(2026, 2, 11, 6, 15, 0, 0, time.UTC)
+	insertDeliveryIntent(t, store, "intent-annotation-rollback", submission.DeliveryTrackingModeOn, 120, base.Add(-time.Minute))
+
+	if _, err := store.applyCorrelatedDeliveryRecord(context.Background(), CorrelatedDeliveryRecord{
+		SourceRecordID:    "src-terminal-lock",
+		IntentID:          "intent-annotation-rollback",
+		SignalClass:       DeliverySignalTerminalSuccess,
+		ReceivedAt:        base,
+		CorrelationResult: DeliveryCorrelationMatched,
+	}); err != nil {
+		t.Fatalf("apply terminal lock signal: %v", err)
+	}
+	beforeHistory := historyCount(t, db, "intent-annotation-rollback")
+	beforeState, ok := loadDeliveryState(t, db, "intent-annotation-rollback")
+	if !ok {
+		t.Fatal("expected delivery state row before annotation rollback test")
+	}
+
+	createAfterInsertHistoryTrigger(
+		t,
+		db,
+		"trg_delete_history_before_annotation",
+		`DELETE h
+FROM dbo.intent_delivery_history h
+INNER JOIN inserted i ON i.intent_id = h.intent_id AND i.source_record_id = h.source_record_id
+WHERE i.source_record_id = 'src-terminal-conflict';`,
+	)
+
+	_, err := store.applyCorrelatedDeliveryRecord(context.Background(), CorrelatedDeliveryRecord{
+		SourceRecordID:    "src-terminal-conflict",
+		IntentID:          "intent-annotation-rollback",
+		SignalClass:       DeliverySignalTerminalFailure,
+		ReceivedAt:        base.Add(time.Second),
+		CorrelationResult: DeliveryCorrelationMatched,
+	})
+	if err == nil {
+		t.Fatal("expected history annotation row-count failure")
+	}
+	if !strings.Contains(err.Error(), "delivery history annotation update affected unexpected row count") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := historyCount(t, db, "intent-annotation-rollback"); got != beforeHistory {
+		t.Fatalf("expected history rollback to preserve count=%d, got %d", beforeHistory, got)
+	}
+	afterState, ok := loadDeliveryState(t, db, "intent-annotation-rollback")
+	if !ok {
+		t.Fatal("expected delivery state row after annotation rollback")
+	}
+	if afterState.deliveryStatus != beforeState.deliveryStatus || afterState.deliveryFreshness != beforeState.deliveryFreshness || afterState.terminalLocked != beforeState.terminalLocked {
+		t.Fatalf("expected state rollback to preserve locked terminal state, before=%+v after=%+v", beforeState, afterState)
+	}
+}
+
+func TestInsertInitialDeliveryStateDuplicateIsNoOp(t *testing.T) {
+	store, db := newDeliveryStore(t)
+	base := time.Date(2026, 2, 11, 6, 30, 0, 0, time.UTC)
+	insertDeliveryIntent(t, store, "intent-initial-state-dup", submission.DeliveryTrackingModeOn, 120, base.Add(-time.Minute))
+
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if err := insertInitialDeliveryState(context.Background(), tx, "intent-initial-state-dup", base.Add(-time.Minute), 120, base); err != nil {
+		t.Fatalf("first insertInitialDeliveryState: %v", err)
+	}
+	if err := insertInitialDeliveryState(context.Background(), tx, "intent-initial-state-dup", base.Add(-time.Minute), 120, base.Add(time.Second)); err != nil {
+		t.Fatalf("second insertInitialDeliveryState should be duplicate no-op, got: %v", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
+	if got := deliveryStateRowCount(t, db, "intent-initial-state-dup"); got != 1 {
+		t.Fatalf("expected one delivery state row after duplicate insert no-op, got %d", got)
+	}
+}
+
+func TestInsertInitialDeliveryStateReturnsErrorOnNonUniqueFailure(t *testing.T) {
+	db := newTestDB(t)
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	err = insertInitialDeliveryState(context.Background(), tx, "missing-intent", time.Now().UTC(), 120, time.Now().UTC())
+	if err == nil {
+		t.Fatal("expected non-unique insertInitialDeliveryState failure for missing parent intent")
+	}
+}
+
 func TestDeliveryApplyConcurrentDuplicateSourceRecordID(t *testing.T) {
 	storeA, db := newDeliveryStore(t)
 	storeB, err := newSQLStore(db)
@@ -827,6 +1091,50 @@ func historyCount(t *testing.T, db *sql.DB, intentID string) int {
 		t.Fatalf("count history: %v", err)
 	}
 	return count
+}
+
+func deliveryStateRowCount(t *testing.T, db *sql.DB, intentID string) int {
+	t.Helper()
+	row := db.QueryRowContext(context.Background(), `SELECT COUNT(1) FROM dbo.intent_delivery_state WHERE intent_id = @p1`, intentID)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		t.Fatalf("count delivery state rows: %v", err)
+	}
+	return count
+}
+
+func createAfterInsertHistoryTrigger(t *testing.T, db *sql.DB, triggerName, body string) {
+	t.Helper()
+	if _, err := db.ExecContext(
+		context.Background(),
+		fmt.Sprintf(
+			`CREATE TRIGGER dbo.%s
+ON dbo.intent_delivery_history
+AFTER INSERT
+AS
+BEGIN
+  SET NOCOUNT ON;
+  %s
+END;`,
+			triggerName,
+			body,
+		),
+	); err != nil {
+		t.Fatalf("create after-insert history trigger %s: %v", triggerName, err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(
+			context.Background(),
+			fmt.Sprintf(
+				`IF OBJECT_ID('dbo.%s', 'TR') IS NOT NULL
+BEGIN
+  DROP TRIGGER dbo.%s;
+END;`,
+				triggerName,
+				triggerName,
+			),
+		)
+	})
 }
 
 func forceFreshness(t *testing.T, db *sql.DB, intentID string, freshness DeliveryFreshness) {

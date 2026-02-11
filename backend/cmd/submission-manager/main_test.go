@@ -236,8 +236,24 @@ func TestSubmitWaitSecondsEarlyReturn(t *testing.T) {
 	server := &apiServer{manager: manager}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	go manager.Run(ctx)
+	runner := submissionmanager.NewLeaderRunnerFromManager(manager, submissionmanager.LeaseConfig{
+		LeaseName:               "submission-manager-executor",
+		HolderID:                "cmd-test-holder",
+		LeaseDuration:           2 * time.Second,
+		RenewInterval:           500 * time.Millisecond,
+		AcquireInterval:         100 * time.Millisecond,
+		ScheduleRefreshInterval: 100 * time.Millisecond,
+	})
+	done := make(chan struct{})
+	go func() {
+		runner.Run(ctx)
+		close(done)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+	waitForLeader(t, runner, 2*time.Second)
 
 	body := `{"intentId":"intent-1","submissionTarget":"sms.realtime","payload":{"to":"+1","message":"hello"}}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/intents?waitSeconds=5", strings.NewReader(body))
@@ -259,6 +275,19 @@ func TestSubmitWaitSecondsEarlyReturn(t *testing.T) {
 	if resp.Status != string(submissionmanager.IntentPending) {
 		t.Fatalf("expected pending status after first attempt, got %q", resp.Status)
 	}
+}
+
+func waitForLeader(t *testing.T, runner *submissionmanager.LeaderRunner, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if runner.IsLeader() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	status := runner.Status()
+	t.Fatalf("leader runner did not become leader in %s (mode=%s holder=%s epoch=%d)", timeout, status.Mode, status.HolderID, status.LeaseEpoch)
 }
 
 func TestHandleMetrics(t *testing.T) {
@@ -334,6 +363,42 @@ func TestHandleHistoryResults(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "intent-1") {
 		t.Fatalf("expected intentId in response, got %q", rr.Body.String())
+	}
+}
+
+func TestSubmissionManagerDoesNotExposeDeliveryWebhookRoute(t *testing.T) {
+	db := newTestDB(t)
+	manager := newTestManager(t, db)
+	server := &apiServer{manager: manager}
+	mux := newMux(server, nil, nil, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/delivery/provider-signal-webhook", strings.NewReader(`{"intentId":"intent-1","providerDeliverySignal":"in_progress"}`))
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestSubmissionManagerDoesNotExposeDeliveryReadRoutes(t *testing.T) {
+	db := newTestDB(t)
+	manager := newTestManager(t, db)
+	server := &apiServer{manager: manager}
+	mux := newMux(server, nil, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/intents/intent-1/delivery", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for delivery route, got %d body=%q", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/intents/intent-1/delivery/history", nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for delivery history route, got %d body=%q", rr.Code, rr.Body.String())
 	}
 }
 

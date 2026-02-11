@@ -12,6 +12,8 @@ Canonical terminology for this module is defined in `specs/delivery-tracking/ubi
 
 V1 includes the complete delivery-tracking path from contract gating through observation visibility. That path starts with `submissionTarget` snapshot settings (`deliveryTracking.mode` and `deliveryTracking.staleAfterSeconds`), continues through provider delivery signal ingestion and signal-to-intent correlation using `intentId`, and applies canonical delivery-status and delivery-freshness semantics. V1 also includes client and operator visibility of delivery status, delivery freshness, and delivery history as a dimension that is explicitly separate from submission status, along with audit visibility for ignored signals when tracking is `off`.
 
+V1 delivery tracking must be deployable as a dedicated multi-instance runtime behind HAProxy. Delivery-tracking endpoint ownership is independent from SubmissionManager, and clients/providers call HAProxy rather than addressing runtime instances directly.
+
 In this DESIGN/EXEC round, webhook ingestion is functionally scoped and assumes trusted ingress. Webhook authentication, signature verification, and replay protection are intentionally deferred.
 
 ## Non-goals
@@ -19,6 +21,8 @@ In this DESIGN/EXEC round, webhook ingestion is functionally scoped and assumes 
 V1 does not change submission status or submission completion timestamps, does not add new public per-target configuration beyond `deliveryTracking.mode` and `deliveryTracking.staleAfterSeconds`, and does not expose provider-specific semantics at the contract boundary. V1 also does not define delivery guarantees or SLAs. Any implementation that weakens foundational invariants is out of scope for V1.
 
 Webhook security hardening is out of scope for this round. Specifically, authentication, signature verification, and replay protection for incoming delivery webhooks are deferred and must be completed before production internet exposure.
+
+Backward-compatibility routing that keeps delivery-tracking endpoints on SubmissionManager is out of scope for V1.
 
 ## Foundational Specs (Normative)
 
@@ -71,6 +75,8 @@ Criterion 5: unresolved deterministic conventions are explicitly listed in `Requ
 
 Criterion 6: the webhook-ingestion slice explicitly states trusted-ingress-only operation for this round and explicitly marks production internet exposure as blocked until deferred webhook security controls are specified and implemented.
 
+Criterion 7: V1 slice set explicitly defines dedicated delivery-tracking service topology, HAProxy multi-instance routing expectations, and decoupled ownership from SubmissionManager.
+
 ## Required V1 Slice Specs
 
 Before EXEC planning, SPEC must produce the following slice specs:
@@ -79,6 +85,7 @@ Before EXEC planning, SPEC must produce the following slice specs:
 2. `specs/delivery-tracking/delivery-tracking-v1-webhook-ingestion.md`
 3. `specs/delivery-tracking/delivery-tracking-v1-get-retrieval.md`
 4. `specs/delivery-tracking/delivery-tracking-v1-observability.md`
+5. `specs/delivery-tracking/delivery-tracking-v1-service-topology.md`
 
 Each slice spec must define its own scope, non-goals, invariants, race handling, failure semantics, concurrency guarantees, and observable acceptance criteria, while referencing foundational specs for shared semantics.
 

@@ -61,6 +61,7 @@ Rules:
   * a concurrency/race condition,
   * a boundary condition implied by the spec.
 * If uncovered code cannot be tested without defining new behavior, VERIFY must stop and escalate (SPEC/DESIGN).
+* Terminology conformance: When a slice spec inherits a ubiquitous-language glossary, VERIFY must check implementation and tests for term alignment and report mismatches as spec-conformance findings.
 
 ## Test Style Constraints (From Repo Discipline)
 

@@ -133,6 +133,7 @@ services:
       - "8080:8080"
       - "8081:8081"
       - "8082:8082"
+      - "8083:8083"
       - "8404:8404"
     volumes:
       - ./backend/conf/docker/haproxy_docker.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
@@ -141,6 +142,8 @@ services:
       - sms-gateway-2
       - push-gateway-1
       - push-gateway-2
+      - delivery-tracking-1
+      - delivery-tracking-2
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8404/stats"]
       interval: 5s
@@ -185,6 +188,38 @@ services:
       - mssql
       - haproxy
       - webhook-sink
+
+  delivery-tracking-1:
+    <<: *go-service
+    command: ["go", "run", "./cmd/delivery-tracking", "-addr", ":8083"]
+    ports:
+      - "18084:8083"
+    env_file:
+      - ./backend/.env
+    environment:
+      MSSQL_HOST: "mssql"
+      MSSQL_PORT: "1433"
+      MSSQL_USER: "sa"
+      MSSQL_DATABASE: "setu"
+      MSSQL_ENCRYPT: "disable"
+    depends_on:
+      - mssql
+
+  delivery-tracking-2:
+    <<: *go-service
+    command: ["go", "run", "./cmd/delivery-tracking", "-addr", ":8083"]
+    ports:
+      - "18085:8083"
+    env_file:
+      - ./backend/.env
+    environment:
+      MSSQL_HOST: "mssql"
+      MSSQL_PORT: "1433"
+      MSSQL_USER: "sa"
+      MSSQL_DATABASE: "setu"
+      MSSQL_ENCRYPT: "disable"
+    depends_on:
+      - mssql
 
   admin-portal:
     <<: *go-service

@@ -10,11 +10,15 @@ This slice uses Option B separation: one endpoint for current delivery status/fr
 
 This slice defines two delivery read API endpoints: `GET /v1/intents/{intentId}/delivery` and `GET /v1/intents/{intentId}/delivery/history`. These endpoints are delivery-focused contracts and must not require clients to parse submission endpoints to obtain delivery tracking results.
 
+These endpoints are owned by delivery-tracking runtime instances behind HAProxy, not by SubmissionManager.
+
 ## Non-goals
 
 This slice does not define provider-facing ingress contracts, delivery status progression rules, delivery freshness progression rules, or storage schema internals.
 
 This slice does not change existing submission GET response contracts.
+
+This slice does not allow backward-compatible hosting of delivery read API endpoints on SubmissionManager.
 
 ## Normative Inheritance
 
@@ -42,6 +46,8 @@ Unexpected retrieval failures return internal error semantics consistent with ex
 
 Slice-specific read-contract invariants are read-only retrieval, explicit mode-off representation with no fabricated delivery status or delivery freshness values, and stable delivery-history ordering for the same persisted snapshot.
 
+Delivery read API endpoint ownership is exclusive to delivery-tracking runtime and must not be dual-served by SubmissionManager.
+
 ## Race Conditions and Handling
 
 Slice-specific read race handling is snapshot consistency at endpoint boundaries: a response must not mix incompatible snapshots, and history ordering guarantees must hold even when reads race with concurrent writes.
@@ -65,3 +71,5 @@ Criterion 3: for tracked intents, the history endpoint returns append-only order
 Criterion 4: for mode-off intents, both endpoints return `deliveryTrackingMode=off` and do not fabricate delivery status or delivery freshness.
 
 Criterion 5: unknown `intentId` yields not-found semantics consistent with existing submission APIs.
+
+Criterion 6: delivery read API endpoints are served by delivery-tracking runtime behind HAProxy and are not served by SubmissionManager.

@@ -26,3 +26,5 @@ This directory contains canonical, as-is specifications for backend behavior. Th
 - `delivery-tracking/delivery-tracking-v1-webhook-ingestion.md` - V1 slice for provider signal webhook ingestion (trusted-ingress-only in this round).
 - `delivery-tracking/delivery-tracking-v1-get-retrieval.md` - V1 slice for delivery read API retrieval contracts.
 - `delivery-tracking/delivery-tracking-v1-observability.md` - V1 slice for delivery metrics, logs, and audit visibility.
+- `delivery-tracking/delivery-tracking-v1-service-topology.md` - V1 slice for dedicated delivery-tracking runtime topology and HAProxy multi-instance ownership boundary.
+- `spec_backlog.md` - Deferred SPEC follow-up items tracked outside active slice scope.

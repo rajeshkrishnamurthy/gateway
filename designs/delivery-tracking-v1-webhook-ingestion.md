@@ -5,6 +5,7 @@ This design covers only `provider signal webhook` ingestion for delivery trackin
 
 ## Inputs (Normative Inheritance Set)
 - `specs/delivery-tracking/delivery-tracking-v1-webhook-ingestion.md`
+- `specs/delivery-tracking/delivery-tracking-v1-service-topology.md`
 - `specs/delivery-tracking/delivery-tracking-v1.md`
 - `specs/delivery-tracking/overview.md`
 - `specs/delivery-tracking/intent-correlation.md`
@@ -100,6 +101,11 @@ Approve recommendation (Option B) for webhook-ingestion deterministic convention
 ## 5. Decision Record (Final Text)
 Chosen option:
 - Option B: transactional normalize-and-handoff with persisted normalized ingestion record.
+
+### 5.0 Runtime ownership boundary
+- `provider signal webhook` ingress is served only by delivery-tracking runtime instances behind HAProxy.
+- SubmissionManager must not dual-serve or compatibility-proxy this ingress surface.
+- Correctness must hold regardless of which healthy delivery-tracking runtime instance receives a webhook request.
 
 ### 5.1 Webhook normalization contract
 - Accepted normalized handoff payload must include:
