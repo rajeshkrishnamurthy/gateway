@@ -60,10 +60,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("construct delivery reader: %v", err)
 	}
+	metrics := deliverytracking.NewMetrics(db)
 
 	server := &apiServer{
 		webhookIngestor: webhookIngestor,
 		reader:          reader,
+		metrics:         metrics,
 	}
 	httpServer := &http.Server{
 		Addr:    *addrFlag,

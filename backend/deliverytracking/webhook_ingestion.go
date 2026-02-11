@@ -89,14 +89,14 @@ func NewWebhookIngestor(db *sql.DB) (*WebhookIngestor, error) {
 // IngestProviderSignalWebhook applies webhook-ingestion validation, normalization, and persistence/handoff atomically.
 func (i *WebhookIngestor) IngestProviderSignalWebhook(ctx context.Context, rawPayload []byte) (WebhookIngestionResult, error) {
 	if i == nil || i.store == nil {
-		return WebhookIngestionResult{}, errors.New("webhook ingestor store is required")
+		return WebhookIngestionResult{}, WrapProcessingStageError(ProcessingStageWebhookIngestion, errors.New("webhook ingestor store is required"))
 	}
 	normalized, err := normalizeWebhookIngestionPayload(rawPayload)
 	if err != nil {
 		return WebhookIngestionResult{}, err
 	}
 	if i.writeCorrelationHandoff == nil {
-		return WebhookIngestionResult{}, errors.New("webhook correlation handoff writer is required")
+		return WebhookIngestionResult{}, WrapProcessingStageError(ProcessingStageCorrelationHandoff, errors.New("webhook correlation handoff writer is required"))
 	}
 
 	if ctx == nil {
@@ -104,7 +104,7 @@ func (i *WebhookIngestor) IngestProviderSignalWebhook(ctx context.Context, rawPa
 	}
 	tx, err := i.store.db.BeginTx(ctx, nil)
 	if err != nil {
-		return WebhookIngestionResult{}, err
+		return WebhookIngestionResult{}, WrapProcessingStageError(ProcessingStageWebhookIngestion, err)
 	}
 	defer func() {
 		_ = tx.Rollback()
@@ -112,11 +112,11 @@ func (i *WebhookIngestor) IngestProviderSignalWebhook(ctx context.Context, rawPa
 
 	receivedAt, err := loadSQLTimeTx(ctx, tx)
 	if err != nil {
-		return WebhookIngestionResult{}, err
+		return WebhookIngestionResult{}, WrapProcessingStageError(ProcessingStageWebhookIngestion, err)
 	}
 	sourceRecordID, err := newWebhookSourceRecordID()
 	if err != nil {
-		return WebhookIngestionResult{}, err
+		return WebhookIngestionResult{}, WrapProcessingStageError(ProcessingStageWebhookIngestion, err)
 	}
 
 	effectiveAt := receivedAt
@@ -138,7 +138,7 @@ func (i *WebhookIngestor) IngestProviderSignalWebhook(ctx context.Context, rawPa
 		ingressSource:          webhookIngressSourceProviderSignalWebhook,
 	}
 	if err := i.store.insertWebhookIngestionRecord(ctx, tx, ingestionRecord); err != nil {
-		return WebhookIngestionResult{}, err
+		return WebhookIngestionResult{}, WrapProcessingStageError(ProcessingStageWebhookIngestion, err)
 	}
 
 	handoffRecord := webhookCorrelationHandoffRecord{
@@ -152,11 +152,11 @@ func (i *WebhookIngestor) IngestProviderSignalWebhook(ctx context.Context, rawPa
 		ingressSource:          webhookIngressSourceProviderSignalWebhook,
 	}
 	if err := i.writeCorrelationHandoff(ctx, tx, handoffRecord); err != nil {
-		return WebhookIngestionResult{}, err
+		return WebhookIngestionResult{}, WrapProcessingStageError(ProcessingStageCorrelationHandoff, err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return WebhookIngestionResult{}, err
+		return WebhookIngestionResult{}, WrapProcessingStageError(ProcessingStageCorrelationHandoff, err)
 	}
 
 	result := WebhookIngestionResult{

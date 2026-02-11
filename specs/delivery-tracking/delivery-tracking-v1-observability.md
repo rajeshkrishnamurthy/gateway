@@ -26,6 +26,7 @@ Delivery-tracking metrics must be exposed through the existing metrics surface a
 
 ```text
 delivery_provider_signals_total{source,correlation_result}
+delivery_status_current_count{delivery_status}
 delivery_status_transitions_total{from_delivery_status,to_delivery_status}
 delivery_freshness_transitions_total{from_delivery_freshness,to_delivery_freshness}
 delivery_ignored_signals_total{reason}
@@ -34,6 +35,8 @@ delivery_read_api_requests_total{endpoint,code}
 ```
 
 For `delivery_ignored_signals_total`, `reason` must include `mode_off` when applicable.
+
+For `delivery_status_current_count`, `delivery_status` must be the canonical delivery status values: `unknown`, `in_progress`, `delivered`, and `failed`.
 
 ## Structured Log Contract
 
@@ -66,3 +69,5 @@ Criterion 3: logs include structured records for invalid ingestion, non-matched 
 Criterion 4: delivery read API request telemetry exists for both `GET /v1/intents/{intentId}/delivery` and `GET /v1/intents/{intentId}/delivery/history`.
 
 Criterion 5: disabling or failing observability outputs does not change submission status, delivery status, or delivery freshness behavior.
+
+Criterion 6: status-count summaries are available through `delivery_status_current_count{delivery_status}` for canonical values `unknown`, `in_progress`, `delivered`, and `failed`.

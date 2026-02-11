@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -30,6 +31,7 @@ type Processor struct {
 type sqlStore struct {
 	db                              *sql.DB
 	deliveryApplyAfterHistoryInsert func() error
+	metrics                         *Metrics
 }
 
 // NewProcessor creates a delivery processor backed by the provided SQL DB.
@@ -41,11 +43,24 @@ func NewProcessor(db *sql.DB) (*Processor, error) {
 	return &Processor{store: store}, nil
 }
 
+// NewProcessorWithMetrics creates a delivery processor with observability metrics.
+func NewProcessorWithMetrics(db *sql.DB, metrics *Metrics) (*Processor, error) {
+	store, err := newSQLStoreWithMetrics(db, metrics)
+	if err != nil {
+		return nil, err
+	}
+	return &Processor{store: store}, nil
+}
+
 func newSQLStore(db *sql.DB) (*sqlStore, error) {
+	return newSQLStoreWithMetrics(db, nil)
+}
+
+func newSQLStoreWithMetrics(db *sql.DB, metrics *Metrics) (*sqlStore, error) {
 	if db == nil {
 		return nil, errors.New("db is required")
 	}
-	return &sqlStore{db: db}, nil
+	return &sqlStore{db: db, metrics: metrics}, nil
 }
 
 // DeliveryCorrelationResult is the deterministic output from intent correlation.
@@ -124,6 +139,7 @@ type normalizedCorrelatedDeliveryRecord struct {
 }
 
 type deliveryIntentSnapshot struct {
+	submissionTarget  string
 	status            SubmissionStatus
 	completedAt       time.Time
 	createdAt         time.Time
@@ -168,17 +184,66 @@ func (p *Processor) EvaluateDeliveryFreshnessStaleness(ctx context.Context) (int
 	return p.store.evaluateDeliveryFreshnessStaleness(ctx)
 }
 
-func (s *sqlStore) applyCorrelatedDeliveryRecord(ctx context.Context, record CorrelatedDeliveryRecord) (DeliveryApplyResult, error) {
+func (s *sqlStore) applyCorrelatedDeliveryRecord(ctx context.Context, record CorrelatedDeliveryRecord) (result DeliveryApplyResult, err error) {
+	intentID := strings.TrimSpace(record.IntentID)
+	submissionTarget := "unknown"
+	deliveryTrackingMode := "unknown"
+	correlationResult := canonicalCorrelationResult(record.CorrelationResult)
+
+	defer func() {
+		if err == nil {
+			return
+		}
+		reason := MapProcessingFailureReason(err)
+		s.observeProcessingFailure(ProcessingStageCoreProcessing, reason)
+		log.Printf(
+			"event=delivery_processing_failure stage=%q reason=%q source=%q intentId=%q submissionTarget=%q deliveryTrackingMode=%q correlationResult=%q",
+			ProcessingStageCoreProcessing,
+			reason,
+			webhookIngressSourceProviderSignalWebhook,
+			intentID,
+			submissionTarget,
+			deliveryTrackingMode,
+			correlationResult,
+		)
+	}()
+
 	normalized, err := normalizeCorrelatedDeliveryRecord(record)
 	if err != nil {
 		return DeliveryApplyResult{}, err
 	}
 
+	intentID = normalized.intentID
+	correlationResult = canonicalCorrelationResult(normalized.correlationResult)
+	s.observeProviderSignal(webhookIngressSourceProviderSignalWebhook, normalized.correlationResult)
+
 	switch normalized.correlationResult {
 	case DeliveryCorrelationUnmatched:
-		return DeliveryApplyResult{NoOpReason: deliveryNoOpReasonCorrelationUnmatched}, nil
+		result = DeliveryApplyResult{NoOpReason: deliveryNoOpReasonCorrelationUnmatched}
+		s.observeIgnoredSignal(result.NoOpReason)
+		log.Printf(
+			"event=delivery_correlation_result source=%q intentId=%q submissionTarget=%q deliveryTrackingMode=%q correlationResult=%q reason=%q",
+			webhookIngressSourceProviderSignalWebhook,
+			intentID,
+			submissionTarget,
+			deliveryTrackingMode,
+			correlationResult,
+			result.NoOpReason,
+		)
+		return result, nil
 	case DeliveryCorrelationInvalid:
-		return DeliveryApplyResult{NoOpReason: deliveryNoOpReasonCorrelationInvalid}, nil
+		result = DeliveryApplyResult{NoOpReason: deliveryNoOpReasonCorrelationInvalid}
+		s.observeIgnoredSignal(result.NoOpReason)
+		log.Printf(
+			"event=delivery_correlation_result source=%q intentId=%q submissionTarget=%q deliveryTrackingMode=%q correlationResult=%q reason=%q",
+			webhookIngressSourceProviderSignalWebhook,
+			intentID,
+			submissionTarget,
+			deliveryTrackingMode,
+			correlationResult,
+			result.NoOpReason,
+		)
+		return result, nil
 	case DeliveryCorrelationMatched:
 	default:
 		return DeliveryApplyResult{}, fmt.Errorf("unknown correlationResult %q", normalized.correlationResult)
@@ -202,11 +267,25 @@ func (s *sqlStore) applyCorrelatedDeliveryRecord(ctx context.Context, record Cor
 	if !found {
 		return DeliveryApplyResult{}, errors.New("intent not found")
 	}
+	submissionTarget = intent.submissionTarget
+	deliveryTrackingMode = string(intent.deliveryMode)
+
 	if intent.deliveryMode != submission.DeliveryTrackingModeOn {
 		if err := tx.Commit(); err != nil {
 			return DeliveryApplyResult{}, err
 		}
-		return DeliveryApplyResult{NoOpReason: deliveryNoOpReasonModeOff}, nil
+		result = DeliveryApplyResult{NoOpReason: deliveryNoOpReasonModeOff}
+		s.observeIgnoredSignal(result.NoOpReason)
+		log.Printf(
+			"event=delivery_signal_ignored source=%q intentId=%q submissionTarget=%q deliveryTrackingMode=%q correlationResult=%q reason=%q",
+			webhookIngressSourceProviderSignalWebhook,
+			intentID,
+			submissionTarget,
+			deliveryTrackingMode,
+			correlationResult,
+			result.NoOpReason,
+		)
+		return result, nil
 	}
 	if intent.staleAfterSeconds <= 0 {
 		return DeliveryApplyResult{}, errors.New("deliveryTracking.staleAfterSeconds must be greater than zero when mode=on")
@@ -225,7 +304,18 @@ func (s *sqlStore) applyCorrelatedDeliveryRecord(ctx context.Context, record Cor
 		if err := tx.Commit(); err != nil {
 			return DeliveryApplyResult{}, err
 		}
-		return DeliveryApplyResult{NoOpReason: deliveryNoOpReasonDuplicateSource}, nil
+		result = DeliveryApplyResult{NoOpReason: deliveryNoOpReasonDuplicateSource}
+		s.observeIgnoredSignal(result.NoOpReason)
+		log.Printf(
+			"event=delivery_signal_ignored source=%q intentId=%q submissionTarget=%q deliveryTrackingMode=%q correlationResult=%q reason=%q",
+			webhookIngressSourceProviderSignalWebhook,
+			intentID,
+			submissionTarget,
+			deliveryTrackingMode,
+			correlationResult,
+			result.NoOpReason,
+		)
+		return result, nil
 	}
 
 	if s.deliveryApplyAfterHistoryInsert != nil {
@@ -247,7 +337,9 @@ func (s *sqlStore) applyCorrelatedDeliveryRecord(ctx context.Context, record Cor
 		}
 	}
 
-	result := DeliveryApplyResult{HistoryInserted: true}
+	previousStatus := state.deliveryStatus
+	previousFreshness := state.deliveryFreshness
+	result = DeliveryApplyResult{HistoryInserted: true}
 	key := deliveryOrderingKey{
 		effectiveAt:    normalized.effectiveAt,
 		receivedAt:     normalized.receivedAt,
@@ -303,14 +395,62 @@ func (s *sqlStore) applyCorrelatedDeliveryRecord(ctx context.Context, record Cor
 	if err := tx.Commit(); err != nil {
 		return DeliveryApplyResult{}, err
 	}
+
+	if result.StateMutated {
+		if previousStatus != state.deliveryStatus {
+			s.observeStatusTransition(previousStatus, state.deliveryStatus)
+			log.Printf(
+				"event=delivery_status_transition source=%q intentId=%q submissionTarget=%q deliveryTrackingMode=%q correlationResult=%q from_delivery_status=%q to_delivery_status=%q",
+				webhookIngressSourceProviderSignalWebhook,
+				intentID,
+				submissionTarget,
+				deliveryTrackingMode,
+				correlationResult,
+				canonicalDeliveryStatus(previousStatus),
+				canonicalDeliveryStatus(state.deliveryStatus),
+			)
+		}
+		if previousFreshness != state.deliveryFreshness {
+			s.observeFreshnessTransition(previousFreshness, state.deliveryFreshness)
+			log.Printf(
+				"event=delivery_freshness_transition source=%q intentId=%q submissionTarget=%q deliveryTrackingMode=%q correlationResult=%q from_delivery_freshness=%q to_delivery_freshness=%q",
+				webhookIngressSourceProviderSignalWebhook,
+				intentID,
+				submissionTarget,
+				deliveryTrackingMode,
+				correlationResult,
+				canonicalDeliveryFreshness(previousFreshness),
+				canonicalDeliveryFreshness(state.deliveryFreshness),
+			)
+		}
+	}
+
 	return result, nil
 }
 
-func (s *sqlStore) evaluateDeliveryFreshnessStaleness(ctx context.Context) (int64, error) {
+func (s *sqlStore) evaluateDeliveryFreshnessStaleness(ctx context.Context) (affected int64, err error) {
+	defer func() {
+		if err == nil {
+			return
+		}
+		reason := MapProcessingFailureReason(err)
+		s.observeProcessingFailure(ProcessingStageFreshnessEvaluator, reason)
+		log.Printf(
+			"event=delivery_processing_failure stage=%q reason=%q source=%q intentId=%q submissionTarget=%q deliveryTrackingMode=%q correlationResult=%q",
+			ProcessingStageFreshnessEvaluator,
+			reason,
+			webhookIngressSourceProviderSignalWebhook,
+			"unknown",
+			"unknown",
+			"unknown",
+			"unknown",
+		)
+	}()
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	result, err := s.db.ExecContext(
+	updateResult, err := s.db.ExecContext(
 		ctx,
 		`UPDATE dbo.intent_delivery_state
      SET delivery_freshness = @p1,
@@ -327,11 +467,67 @@ func (s *sqlStore) evaluateDeliveryFreshnessStaleness(ctx context.Context) (int6
 	if err != nil {
 		return 0, err
 	}
-	affected, err := result.RowsAffected()
+	affected, err = updateResult.RowsAffected()
 	if err != nil {
 		return 0, err
 	}
+	if affected > 0 {
+		s.observeFreshnessTransitions(DeliveryFreshnessFresh, DeliveryFreshnessStale, uint64(affected))
+		log.Printf(
+			"event=delivery_freshness_transition source=%q intentId=%q submissionTarget=%q deliveryTrackingMode=%q correlationResult=%q from_delivery_freshness=%q to_delivery_freshness=%q transition_count=%d",
+			webhookIngressSourceProviderSignalWebhook,
+			"unknown",
+			"unknown",
+			"unknown",
+			"unknown",
+			string(DeliveryFreshnessFresh),
+			string(DeliveryFreshnessStale),
+			affected,
+		)
+	}
 	return affected, nil
+}
+
+func (s *sqlStore) observeProviderSignal(source string, result DeliveryCorrelationResult) {
+	if s == nil || s.metrics == nil {
+		return
+	}
+	s.metrics.ObserveProviderSignal(source, result)
+}
+
+func (s *sqlStore) observeStatusTransition(from, to DeliveryStatus) {
+	if s == nil || s.metrics == nil {
+		return
+	}
+	s.metrics.ObserveStatusTransition(from, to)
+}
+
+func (s *sqlStore) observeFreshnessTransition(from, to DeliveryFreshness) {
+	if s == nil || s.metrics == nil {
+		return
+	}
+	s.metrics.ObserveFreshnessTransition(from, to)
+}
+
+func (s *sqlStore) observeFreshnessTransitions(from, to DeliveryFreshness, count uint64) {
+	if s == nil || s.metrics == nil {
+		return
+	}
+	s.metrics.ObserveFreshnessTransitions(from, to, count)
+}
+
+func (s *sqlStore) observeIgnoredSignal(reason string) {
+	if s == nil || s.metrics == nil {
+		return
+	}
+	s.metrics.ObserveIgnoredSignal(reason)
+}
+
+func (s *sqlStore) observeProcessingFailure(stage, reason string) {
+	if s == nil || s.metrics == nil {
+		return
+	}
+	s.metrics.ObserveProcessingFailure(stage, reason)
 }
 
 func normalizeCorrelatedDeliveryRecord(record CorrelatedDeliveryRecord) (normalizedCorrelatedDeliveryRecord, error) {
@@ -386,7 +582,8 @@ func normalizeCorrelatedDeliveryRecord(record CorrelatedDeliveryRecord) (normali
 func loadDeliveryIntentSnapshotForUpdate(ctx context.Context, tx *sql.Tx, intentID string) (deliveryIntentSnapshot, bool, error) {
 	row := tx.QueryRowContext(
 		ctx,
-		`SELECT status,
+		`SELECT submission_target,
+      status,
       updated_at,
       created_at,
       delivery_tracking_mode,
@@ -397,13 +594,14 @@ func loadDeliveryIntentSnapshotForUpdate(ctx context.Context, tx *sql.Tx, intent
 	)
 
 	var (
+		submissionTarget  string
 		statusValue       string
 		updatedAt         time.Time
 		createdAt         time.Time
 		deliveryMode      string
 		staleAfterSeconds sql.NullInt32
 	)
-	if err := row.Scan(&statusValue, &updatedAt, &createdAt, &deliveryMode, &staleAfterSeconds); err != nil {
+	if err := row.Scan(&submissionTarget, &statusValue, &updatedAt, &createdAt, &deliveryMode, &staleAfterSeconds); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return deliveryIntentSnapshot{}, false, nil
 		}
@@ -418,6 +616,7 @@ func loadDeliveryIntentSnapshotForUpdate(ctx context.Context, tx *sql.Tx, intent
 	}
 
 	snapshot := deliveryIntentSnapshot{
+		submissionTarget:  strings.TrimSpace(submissionTarget),
 		status:            SubmissionStatus(statusValue),
 		createdAt:         normalizeDBTime(createdAt),
 		deliveryMode:      mode,

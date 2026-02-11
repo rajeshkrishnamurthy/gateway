@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -101,6 +102,146 @@ func TestDeliveryRuntimeWebhookTransientFailureMappedTo503AndNoPartialCommit(t *
 	if countWebhookIngestionRows(t, db, "intent-503") != 0 {
 		t.Fatalf("expected no partial ingestion rows")
 	}
+
+	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metricsRR := httptest.NewRecorder()
+	mux.ServeHTTP(metricsRR, metricsReq)
+	assertContainsRuntimeMetric(t, metricsRR.Body.String(), `delivery_processing_failures_total{stage="correlation_handoff",reason="storage_unavailable"} 1`)
+}
+
+func TestDeliveryRuntimeMetricsEndpointExposesDeliveryMetrics(t *testing.T) {
+	server, _ := newTestServer(t)
+	mux := newMux(server)
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("Content-Type"); got != "text/plain; version=0.0.4" {
+		t.Fatalf("expected metrics content type, got %q", got)
+	}
+	body := rr.Body.String()
+	requiredMetrics := []string{
+		"delivery_provider_signals_total",
+		"delivery_status_current_count",
+		"delivery_status_transitions_total",
+		"delivery_freshness_transitions_total",
+		"delivery_ignored_signals_total",
+		"delivery_processing_failures_total",
+		"delivery_read_api_requests_total",
+	}
+	for _, metricName := range requiredMetrics {
+		if !strings.Contains(body, metricName) {
+			t.Fatalf("expected metrics output to include %q, body=%q", metricName, body)
+		}
+	}
+}
+
+func TestDeliveryRuntimeMetricsEndpointReturns404WhenRegistryUnavailable(t *testing.T) {
+	server, _ := newTestServer(t)
+	server.metrics = nil
+	mux := newMux(server)
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestDeliveryRuntimeWebhookInvalidPayloadObservability(t *testing.T) {
+	server, _ := newTestServer(t)
+	mux := newMux(server)
+
+	var logBuf bytes.Buffer
+	restoreLogs := captureRuntimeLogs(&logBuf)
+	defer restoreLogs()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/delivery/provider-signal-webhook", strings.NewReader(`{"intentId":"intent-obsv-http"}`))
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%q", rr.Code, rr.Body.String())
+	}
+
+	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metricsRR := httptest.NewRecorder()
+	mux.ServeHTTP(metricsRR, metricsReq)
+	metricsBody := metricsRR.Body.String()
+
+	if !strings.Contains(metricsBody, `delivery_processing_failures_total{stage="webhook_ingestion",reason="invalid_payload"} 1`) {
+		t.Fatalf("expected webhook invalid payload failure metric, body=%q", metricsBody)
+	}
+
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, `event=delivery_webhook_ingestion_rejected`) {
+		t.Fatalf("expected webhook rejection log, logs=%q", logOutput)
+	}
+	if strings.Contains(logOutput, "providerDeliverySignal") {
+		t.Fatalf("expected log to avoid payload/body fields, logs=%q", logOutput)
+	}
+}
+
+func TestDeliveryRuntimeReadAPIObservabilityMetricsAndFailureMapping(t *testing.T) {
+	server, db := newTestServer(t)
+	mux := newMux(server)
+	insertIntent(t, db, "intent-read-obsv", submission.DeliveryTrackingModeOn, 120, time.Now().UTC().Add(-time.Minute))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/intents/missing/delivery", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%q", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/intents/missing/delivery/history", nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 history, got %d body=%q", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/intents/intent-read-obsv/delivery", nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d body=%q", rr.Code, rr.Body.String())
+	}
+
+	if _, err := db.ExecContext(
+		context.Background(),
+		`UPDATE dbo.submission_intents
+     SET delivery_tracking_mode = @p1
+     WHERE intent_id = @p2`,
+		"x",
+		"intent-read-obsv",
+	); err != nil {
+		t.Fatalf("set invalid delivery tracking mode: %v", err)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/intents/intent-read-obsv/delivery", nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d body=%q", rr.Code, rr.Body.String())
+	}
+
+	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metricsRR := httptest.NewRecorder()
+	mux.ServeHTTP(metricsRR, metricsReq)
+	metricsBody := metricsRR.Body.String()
+
+	assertContainsRuntimeMetric(t, metricsBody, `delivery_read_api_requests_total{endpoint="/v1/intents/{intentId}/delivery",code="404"} 1`)
+	assertContainsRuntimeMetric(t, metricsBody, `delivery_read_api_requests_total{endpoint="/v1/intents/{intentId}/delivery",code="405"} 1`)
+	assertContainsRuntimeMetric(t, metricsBody, `delivery_read_api_requests_total{endpoint="/v1/intents/{intentId}/delivery",code="500"} 1`)
+	assertContainsRuntimeMetric(t, metricsBody, `delivery_read_api_requests_total{endpoint="/v1/intents/{intentId}/delivery/history",code="404"} 1`)
+	assertContainsRuntimeMetric(t, metricsBody, `delivery_processing_failures_total{stage="delivery_read_api",reason="internal_error"} 1`)
 }
 
 func TestDeliveryRuntimeGetCurrentModeOff(t *testing.T) {
@@ -385,9 +526,11 @@ func newServerFromDB(t *testing.T, db *sql.DB) *apiServer {
 	if err != nil {
 		t.Fatalf("new delivery reader: %v", err)
 	}
+	metrics := deliverytracking.NewMetrics(db)
 	return &apiServer{
 		webhookIngestor: ingestor,
 		reader:          reader,
+		metrics:         metrics,
 	}
 }
 
@@ -562,6 +705,27 @@ func normalizeTime(value time.Time) time.Time {
 		value.Nanosecond(),
 		time.UTC,
 	)
+}
+
+func assertContainsRuntimeMetric(t *testing.T, body, expected string) {
+	t.Helper()
+	if !strings.Contains(body, expected) {
+		t.Fatalf("expected metrics output to include %q, body=%q", expected, body)
+	}
+}
+
+func captureRuntimeLogs(buf *bytes.Buffer) func() {
+	currentWriter := log.Writer()
+	currentFlags := log.Flags()
+	currentPrefix := log.Prefix()
+	log.SetOutput(buf)
+	log.SetFlags(0)
+	log.SetPrefix("")
+	return func() {
+		log.SetOutput(currentWriter)
+		log.SetFlags(currentFlags)
+		log.SetPrefix(currentPrefix)
+	}
 }
 
 func newTestDB(t *testing.T) *sql.DB {
