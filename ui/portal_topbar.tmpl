@@ -17,6 +17,15 @@
     {{if .ShowPush}}
     <a class="{{if eq .Active "push"}}is-active{{end}}" href="/push/ui/send">Test Push</a>
     {{end}}
+    {{if .ShowDeliveryCurrent}}
+    <a class="{{if eq .Active "delivery-current"}}is-active{{end}}" href="/delivery/ui/current">Delivery Current</a>
+    {{end}}
+    {{if .ShowDeliveryHistory}}
+    <a class="{{if eq .Active "delivery-history"}}is-active{{end}}" href="/delivery/ui/history">Delivery History</a>
+    {{end}}
+    {{if .ShowDeliveryTestProducer}}
+    <a class="{{if eq .Active "delivery-test-producer"}}is-active{{end}}" href="/delivery/ui/test-producer">Delivery Test Producer</a>
+    {{end}}
     {{if .ShowDashboards}}
     <a class="{{if eq .Active "dashboards"}}is-active{{end}}" href="/dashboards">Dashboards</a>
     {{end}}

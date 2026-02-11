@@ -11,6 +11,10 @@
       "policy": "deadline",
       "maxAcceptanceSeconds": 30,
       "terminalOutcomes": ["invalid_request", "invalid_recipient", "invalid_message"],
+      "deliveryTracking": {
+        "mode": "on",
+        "staleAfterSeconds": 86400
+      },
       "webhook": {
         "url": "http://webhook-sink:9999/webhook"
       }

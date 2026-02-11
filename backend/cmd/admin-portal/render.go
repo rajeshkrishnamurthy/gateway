@@ -25,12 +25,15 @@ func (s *portalServer) renderPage(w http.ResponseWriter, r *http.Request, tmpl *
 
 func (s *portalServer) renderShell(w http.ResponseWriter, fragment []byte, active string, status int) {
 	topbar, err := executeTemplate(s.templates.topbar, "portal_topbar.tmpl", topbarView{
-		Active:            active,
-		ShowSMS:           s.config.SMSGatewayURL != "",
-		ShowPush:          s.config.PushGatewayURL != "",
-		ShowTroubleshoot:  s.config.SubmissionManagerURL != "",
-		ShowDashboards:    s.config.SubmissionManagerDashboardURL != "" || s.config.SMSGatewayURL != "" || s.config.PushGatewayURL != "",
-		ShowCommandCenter: s.config.CommandCenterURL != "",
+		Active:                   active,
+		ShowSMS:                  s.config.SMSGatewayURL != "",
+		ShowPush:                 s.config.PushGatewayURL != "",
+		ShowTroubleshoot:         s.config.SubmissionManagerURL != "",
+		ShowDashboards:           s.hasAnyDashboard(),
+		ShowCommandCenter:        s.config.CommandCenterURL != "",
+		ShowDeliveryCurrent:      s.deliveryRoutesEnabled(),
+		ShowDeliveryHistory:      s.deliveryRoutesEnabled(),
+		ShowDeliveryTestProducer: s.deliveryTestProducerNavEnabled(),
 	})
 	if err != nil {
 		log.Printf("render topbar: %v", err)

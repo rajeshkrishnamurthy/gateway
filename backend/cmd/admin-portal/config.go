@@ -55,7 +55,21 @@ func normalizeConfig(cfg fileConfig) fileConfig {
 	cfg.PushSubmissionTarget = strings.TrimSpace(cfg.PushSubmissionTarget)
 	cfg.CommandCenterURL = strings.TrimRight(strings.TrimSpace(cfg.CommandCenterURL), "/")
 	cfg.HAProxyStatsURL = strings.TrimSpace(cfg.HAProxyStatsURL)
+	cfg.DeliveryTrackingURL = strings.TrimRight(strings.TrimSpace(cfg.DeliveryTrackingURL), "/")
+	cfg.DeliveryTrackingDashboardURL = strings.TrimRight(strings.TrimSpace(cfg.DeliveryTrackingDashboardURL), "/")
+	cfg.PortalEnvironment = normalizePortalEnvironment(cfg.PortalEnvironment)
 	return cfg
+}
+
+func normalizePortalEnvironment(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "dev":
+		return "dev"
+	case "staging":
+		return "staging"
+	default:
+		return "prod"
+	}
 }
 
 func resolveTitle(title string) string {

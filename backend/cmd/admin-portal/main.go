@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-var configPath = flag.String("config", "conf/admin_portal.json", "Admin portal config file path")
+var configPath = flag.String("config", "backend/conf/admin_portal.json", "Admin portal config file path")
 var listenAddr = flag.String("addr", ":8090", "HTTP listen address")
 var showHelp = flag.Bool("help", false, "show usage")
 var showVersion = flag.Bool("version", false, "show version")
@@ -61,6 +61,7 @@ func main() {
 	mux.HandleFunc("/sms/status", server.handleSMSStatus)
 	mux.HandleFunc("/dashboards", server.handleDashboards)
 	mux.HandleFunc("/dashboards/submission-manager", server.handleSubmissionManagerDashboard)
+	mux.HandleFunc("/dashboards/delivery-tracking", server.handleDeliveryTrackingDashboard)
 	mux.HandleFunc("/troubleshoot", server.handleTroubleshoot)
 	mux.HandleFunc("/troubleshoot/history", server.handleTroubleshootHistory)
 	mux.HandleFunc("/push/ui", server.handlePushUI)
@@ -71,6 +72,12 @@ func main() {
 	mux.HandleFunc("/push/status", server.handlePushStatus)
 	mux.HandleFunc("/command-center/ui", server.handleCommandCenterUI)
 	mux.HandleFunc("/command-center/ui/", server.handleCommandCenterUI)
+	mux.HandleFunc("/delivery/ui/current", server.handleDeliveryCurrentUI)
+	mux.HandleFunc("/delivery/ui/history", server.handleDeliveryHistoryUI)
+	mux.HandleFunc("/delivery/current", server.handleDeliveryCurrent)
+	mux.HandleFunc("/delivery/history", server.handleDeliveryHistory)
+	mux.HandleFunc("/delivery/ui/test-producer", server.handleDeliveryTestProducerUI)
+	mux.HandleFunc("/delivery/test-producer", server.handleDeliveryTestProducer)
 
 	log.Printf("listening on %s configPath=%q", *listenAddr, *configPath)
 	if err := http.ListenAndServe(*listenAddr, mux); err != nil {

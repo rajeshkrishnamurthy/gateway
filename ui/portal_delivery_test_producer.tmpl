@@ -1,0 +1,48 @@
+<main class="page">
+  <header class="page-header">
+    <div class="brand">
+      <h1>Delivery Test Producer</h1>
+      <p>Submit a provider signal webhook payload to delivery tracking in non-production environments.</p>
+    </div>
+  </header>
+
+  <section class="panel">
+    <h2>Webhook payload</h2>
+    <form class="form-grid" method="post" action="{{.FormAction}}" hx-post="{{.FormAction}}" hx-target="#delivery-test-result" hx-swap="innerHTML">
+      <div class="field">
+        <label for="intentId">intentId</label>
+        <input id="intentId" name="intentId" type="text" required />
+      </div>
+      <div class="field">
+        <label for="providerDeliverySignal">providerDeliverySignal</label>
+        <select id="providerDeliverySignal" name="providerDeliverySignal" required>
+          <option value="">Select a signal</option>
+          <option value="in_progress">in_progress</option>
+          <option value="terminal_success">terminal_success</option>
+          <option value="terminal_failure">terminal_failure</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="providerObservedAt">providerObservedAt</label>
+        <input id="providerObservedAt" name="providerObservedAt" type="text" placeholder="RFC3339 timestamp (optional)" />
+      </div>
+      <div class="field">
+        <label for="providerEventId">providerEventId</label>
+        <input id="providerEventId" name="providerEventId" type="text" />
+      </div>
+      <div class="field">
+        <label for="providerMetadata">providerMetadata</label>
+        <textarea id="providerMetadata" name="providerMetadata" placeholder='{"provider":"example"}'></textarea>
+        <small>Optional JSON object.</small>
+      </div>
+      <div class="actions">
+        <button class="button" type="submit">Send webhook</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel" id="delivery-test-result">
+    <h2>Response</h2>
+    <p class="muted">Submit a payload to see the upstream response.</p>
+  </section>
+</main>

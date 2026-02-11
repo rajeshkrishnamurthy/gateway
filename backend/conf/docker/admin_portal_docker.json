@@ -8,5 +8,9 @@
   "smsSubmissionTarget": "sms.realtime",
   "pushSubmissionTarget": "push.realtime",
   "commandCenterUrl": "http://host.docker.internal:8070",
-  "haproxyStatsUrl": "http://haproxy:8404/stats;csv"
+  "haproxyStatsUrl": "http://haproxy:8404/stats;csv",
+  "deliveryTrackingUrl": "http://haproxy:8083",
+  "deliveryTrackingDashboardUrl": "",
+  "portalEnvironment": "dev",
+  "deliveryTestProducerEnabled": true
 }

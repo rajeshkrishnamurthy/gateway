@@ -16,6 +16,10 @@ type fileConfig struct {
 	PushSubmissionTarget          string `json:"pushSubmissionTarget"`
 	CommandCenterURL              string `json:"commandCenterUrl"`
 	HAProxyStatsURL               string `json:"haproxyStatsUrl"`
+	DeliveryTrackingURL           string `json:"deliveryTrackingUrl"`
+	DeliveryTrackingDashboardURL  string `json:"deliveryTrackingDashboardUrl"`
+	PortalEnvironment             string `json:"portalEnvironment"`
+	DeliveryTestProducerEnabled   bool   `json:"deliveryTestProducerEnabled"`
 }
 
 type portalTemplates struct {
@@ -27,6 +31,8 @@ type portalTemplates struct {
 	dashboards       *template.Template
 	dashboardEmbed   *template.Template
 	submissionResult *template.Template
+	deliveryRead     *template.Template
+	deliveryProducer *template.Template
 }
 
 type portalServer struct {
@@ -92,18 +98,22 @@ type pushTestRequest struct {
 }
 
 type topbarView struct {
-	Active            string
-	ShowSMS           bool
-	ShowPush          bool
-	ShowTroubleshoot  bool
-	ShowDashboards    bool
-	ShowCommandCenter bool
+	Active                   string
+	ShowSMS                  bool
+	ShowPush                 bool
+	ShowTroubleshoot         bool
+	ShowDashboards           bool
+	ShowCommandCenter        bool
+	ShowDeliveryCurrent      bool
+	ShowDeliveryHistory      bool
+	ShowDeliveryTestProducer bool
 }
 
 type dashboardsView struct {
-	SubmissionURL  string
-	SMSGatewayURL  string
-	PushGatewayURL string
+	SubmissionURL       string
+	SMSGatewayURL       string
+	PushGatewayURL      string
+	DeliveryTrackingURL string
 }
 
 type dashboardEmbedView struct {
@@ -121,6 +131,17 @@ type consoleView struct {
 	Label string
 	Meta  string
 	Href  string
+}
+
+type deliveryReadView struct {
+	Title       string
+	Description string
+	FormAction  string
+	ResultHint  string
+}
+
+type deliveryProducerView struct {
+	FormAction string
 }
 
 type haproxyView struct {

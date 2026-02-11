@@ -8,11 +8,19 @@ func (s *portalServer) handleDashboards(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	view := dashboardsView{
-		SubmissionURL:  s.submissionManagerDashboardPath(),
-		SMSGatewayURL:  s.gatewayDashboardURL(s.config.SMSGatewayURL, "/sms/ui/metrics"),
-		PushGatewayURL: s.gatewayDashboardURL(s.config.PushGatewayURL, "/push/ui/metrics"),
+		SubmissionURL:       s.submissionManagerDashboardPath(),
+		SMSGatewayURL:       s.gatewayDashboardURL(s.config.SMSGatewayURL, "/sms/ui/metrics"),
+		PushGatewayURL:      s.gatewayDashboardURL(s.config.PushGatewayURL, "/push/ui/metrics"),
+		DeliveryTrackingURL: s.deliveryTrackingDashboardPath(),
 	}
 	s.renderPage(w, r, s.templates.dashboards, "portal_dashboards.tmpl", view, navDashboards)
+}
+
+func (s *portalServer) hasAnyDashboard() bool {
+	return s.submissionManagerDashboardPath() != "" ||
+		s.gatewayDashboardURL(s.config.SMSGatewayURL, "/sms/ui/metrics") != "" ||
+		s.gatewayDashboardURL(s.config.PushGatewayURL, "/push/ui/metrics") != "" ||
+		s.deliveryTrackingDashboardPath() != ""
 }
 
 func (s *portalServer) gatewayDashboardURL(baseURL, fallback string) string {
@@ -29,6 +37,13 @@ func (s *portalServer) submissionManagerDashboardPath() string {
 	return "/dashboards/submission-manager"
 }
 
+func (s *portalServer) deliveryTrackingDashboardPath() string {
+	if s.config.DeliveryTrackingDashboardURL == "" {
+		return ""
+	}
+	return "/dashboards/delivery-tracking"
+}
+
 func (s *portalServer) handleSubmissionManagerDashboard(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		s.renderError(w, r, http.StatusMethodNotAllowed, "Method not allowed", "method not allowed", navDashboards)
@@ -42,6 +57,23 @@ func (s *portalServer) handleSubmissionManagerDashboard(w http.ResponseWriter, r
 		Title:        "Submission Manager Dashboard",
 		Description:  "",
 		DashboardURL: s.config.SubmissionManagerDashboardURL,
+	}
+	s.renderPage(w, r, s.templates.dashboardEmbed, "portal_dashboard_embed.tmpl", view, navDashboards)
+}
+
+func (s *portalServer) handleDeliveryTrackingDashboard(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.renderError(w, r, http.StatusMethodNotAllowed, "Method not allowed", "method not allowed", navDashboards)
+		return
+	}
+	if s.config.DeliveryTrackingDashboardURL == "" {
+		s.renderError(w, r, http.StatusNotFound, "Dashboard not configured", "deliveryTrackingDashboardUrl is empty in the portal config.", navDashboards)
+		return
+	}
+	view := dashboardEmbedView{
+		Title:        "Delivery Tracking Dashboard",
+		Description:  "",
+		DashboardURL: s.config.DeliveryTrackingDashboardURL,
 	}
 	s.renderPage(w, r, s.templates.dashboardEmbed, "portal_dashboard_embed.tmpl", view, navDashboards)
 }

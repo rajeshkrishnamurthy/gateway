@@ -34,6 +34,46 @@ func TestLoadConfigWithComments(t *testing.T) {
 	}
 }
 
+func TestDockerServicesConfigIncludesDeliveryTrackingInstances(t *testing.T) {
+	cfg, err := loadConfig(filepath.Join("..", "..", "conf", "docker", "services_health.json"))
+	if err != nil {
+		t.Fatalf("loadConfig docker services health config: %v", err)
+	}
+
+	assertDeliveryTrackingService := func(serviceID, label, instanceName, addr, composeService string) {
+		t.Helper()
+		service, ok := findServiceByID(cfg.Services, serviceID)
+		if !ok {
+			t.Fatalf("expected service %q in docker config", serviceID)
+		}
+		if service.Label != label {
+			t.Fatalf("expected label %q for %q, got %q", label, serviceID, service.Label)
+		}
+		if len(service.Instances) != 1 {
+			t.Fatalf("expected exactly one instance for %q, got %d", serviceID, len(service.Instances))
+		}
+		instance := service.Instances[0]
+		if instance.Name != instanceName {
+			t.Fatalf("expected instance name %q for %q, got %q", instanceName, serviceID, instance.Name)
+		}
+		if instance.Addr != addr {
+			t.Fatalf("expected addr %q for %q, got %q", addr, serviceID, instance.Addr)
+		}
+		if len(service.StartCommand) == 0 || len(service.StopCommand) == 0 {
+			t.Fatalf("expected start/stop commands configured for %q", serviceID)
+		}
+		if service.StartCommand[len(service.StartCommand)-1] != composeService {
+			t.Fatalf("expected start command target %q for %q, got %q", composeService, serviceID, service.StartCommand[len(service.StartCommand)-1])
+		}
+		if service.StopCommand[len(service.StopCommand)-1] != composeService {
+			t.Fatalf("expected stop command target %q for %q, got %q", composeService, serviceID, service.StopCommand[len(service.StopCommand)-1])
+		}
+	}
+
+	assertDeliveryTrackingService("delivery-tracking-1", "Delivery Tracking (1)", "delivery-tracking-1", ":18084", "delivery-tracking-1")
+	assertDeliveryTrackingService("delivery-tracking-2", "Delivery Tracking (2)", "delivery-tracking-2", ":18085", "delivery-tracking-2")
+}
+
 func TestLoadConfigRequiresHealthURL(t *testing.T) {
 	content := "{\n  \"services\": [\n    {\n      \"id\": \"sms\",\n      \"label\": \"SMS\",\n      \"instances\": [\n        {\n          \"name\": \"one\",\n          \"addr\": \":18080\"\n        }\n      ]\n    }\n  ]\n}\n"
 	dir := t.TempDir()
@@ -44,6 +84,15 @@ func TestLoadConfigRequiresHealthURL(t *testing.T) {
 	if _, err := loadConfig(path); err == nil {
 		t.Fatal("expected error for missing healthUrl")
 	}
+}
+
+func findServiceByID(services []serviceConfig, id string) (serviceConfig, bool) {
+	for _, service := range services {
+		if service.ID == id {
+			return service, true
+		}
+	}
+	return serviceConfig{}, false
 }
 
 func TestLoadConfigRejectsInvalidHealthURL(t *testing.T) {

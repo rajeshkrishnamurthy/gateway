@@ -1,0 +1,26 @@
+<main class="page">
+  <header class="page-header">
+    <div class="brand">
+      <h1>{{.Title}}</h1>
+      <p>{{.Description}}</p>
+    </div>
+  </header>
+
+  <section class="panel">
+    <h2>Request</h2>
+    <form class="form-grid" method="get" action="{{.FormAction}}" hx-get="{{.FormAction}}" hx-target="#delivery-read-result" hx-swap="innerHTML">
+      <div class="field">
+        <label for="intentId">intentId</label>
+        <input id="intentId" name="intentId" type="text" required />
+      </div>
+      <div class="actions">
+        <button class="button" type="submit">Fetch</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel" id="delivery-read-result">
+    <h2>Result</h2>
+    <p class="muted">{{.ResultHint}}</p>
+  </section>
+</main>

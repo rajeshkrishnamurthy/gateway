@@ -39,6 +39,14 @@ func loadPortalTemplates(uiDir string) (portalTemplates, error) {
 	if err != nil {
 		return portalTemplates{}, err
 	}
+	deliveryRead, err := template.ParseFiles(filepath.Join(uiDir, "portal_delivery_read.tmpl"))
+	if err != nil {
+		return portalTemplates{}, err
+	}
+	deliveryProducer, err := template.ParseFiles(filepath.Join(uiDir, "portal_delivery_test_producer.tmpl"))
+	if err != nil {
+		return portalTemplates{}, err
+	}
 	return portalTemplates{
 		topbar:           topbar,
 		overview:         overview,
@@ -48,6 +56,8 @@ func loadPortalTemplates(uiDir string) (portalTemplates, error) {
 		dashboards:       dashboards,
 		dashboardEmbed:   dashboardEmbed,
 		submissionResult: submissionResult,
+		deliveryRead:     deliveryRead,
+		deliveryProducer: deliveryProducer,
 	}, nil
 }
 

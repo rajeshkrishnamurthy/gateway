@@ -9,5 +9,9 @@
   "smsSubmissionTarget": "sms.realtime",
   "pushSubmissionTarget": "push.realtime",
   "commandCenterUrl": "http://localhost:8070",
-  "haproxyStatsUrl": "http://localhost:8404/stats;csv"
+  "haproxyStatsUrl": "http://localhost:8404/stats;csv",
+  "deliveryTrackingUrl": "http://localhost:8083",
+  "deliveryTrackingDashboardUrl": "",
+  "portalEnvironment": "prod",
+  "deliveryTestProducerEnabled": false
 }

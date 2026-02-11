@@ -146,6 +146,9 @@ func TestNormalizeConfig(t *testing.T) {
 		SubmissionManagerDashboardURL: " http://grafana.example.com/d/submission ",
 		CommandCenterURL:              "http://cc.example.com/ ",
 		HAProxyStatsURL:               " http://haproxy.example.com/stats;csv ",
+		DeliveryTrackingURL:           " http://haproxy.example.com:8083/ ",
+		DeliveryTrackingDashboardURL:  " http://grafana.example.com/d/delivery ",
+		PortalEnvironment:             " STAGING ",
 	}
 	got := normalizeConfig(cfg)
 	if got.Title != "Portal" {
@@ -165,6 +168,22 @@ func TestNormalizeConfig(t *testing.T) {
 	}
 	if got.HAProxyStatsURL != "http://haproxy.example.com/stats;csv" {
 		t.Fatalf("unexpected haproxy url: %q", got.HAProxyStatsURL)
+	}
+	if got.DeliveryTrackingURL != "http://haproxy.example.com:8083" {
+		t.Fatalf("unexpected delivery tracking url: %q", got.DeliveryTrackingURL)
+	}
+	if got.DeliveryTrackingDashboardURL != "http://grafana.example.com/d/delivery" {
+		t.Fatalf("unexpected delivery dashboard url: %q", got.DeliveryTrackingDashboardURL)
+	}
+	if got.PortalEnvironment != "staging" {
+		t.Fatalf("unexpected portal environment: %q", got.PortalEnvironment)
+	}
+}
+
+func TestNormalizeConfigDefaultsPortalEnvironmentToProd(t *testing.T) {
+	got := normalizeConfig(fileConfig{})
+	if got.PortalEnvironment != "prod" {
+		t.Fatalf("expected default env prod, got %q", got.PortalEnvironment)
 	}
 }
 
@@ -296,6 +315,52 @@ func TestProxyUIEmbedAddsQueryAndStripsTheme(t *testing.T) {
 	}
 }
 
+func TestHandleCommandCenterUIPreservesServiceRowsAndToggleActions(t *testing.T) {
+	var seenEmbed bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("embed") == "1" {
+			seenEmbed = true
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = io.WriteString(w, `<button id="theme-toggle">Theme</button>
+<table>
+  <tr>
+    <td class="health-name">Delivery Tracking (1)</td>
+    <td>
+      <form hx-post="/ui/services/start"><button class="toggle is-off" type="submit">Off</button></form>
+      <form hx-post="/ui/services/stop"><button class="toggle is-on" type="submit">On</button></form>
+    </td>
+  </tr>
+</table>`)
+	}))
+	defer upstream.Close()
+
+	server := newTestPortalServer(t, fileConfig{CommandCenterURL: upstream.URL})
+	req := httptest.NewRequest(http.MethodGet, "/command-center/ui", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleCommandCenterUI(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+	if !seenEmbed {
+		t.Fatal("expected embed=1 in upstream request")
+	}
+	body := rr.Body.String()
+	if strings.Contains(body, "theme-toggle") {
+		t.Fatalf("expected theme toggle stripped, got %q", body)
+	}
+	if !strings.Contains(body, "Delivery Tracking (1)") {
+		t.Fatalf("expected delivery tracking row preserved, got %q", body)
+	}
+	if !strings.Contains(body, `hx-post="/command-center/ui/services/start"`) {
+		t.Fatalf("expected rewritten start action path, got %q", body)
+	}
+	if !strings.Contains(body, `hx-post="/command-center/ui/services/stop"`) {
+		t.Fatalf("expected rewritten stop action path, got %q", body)
+	}
+}
+
 func newTestPortalServer(t *testing.T, cfg fileConfig) *portalServer {
 	t.Helper()
 	topbar := template.Must(template.New("portal_topbar.tmpl").Parse(`{{define "portal_topbar.tmpl"}}topbar{{end}}`))
@@ -303,9 +368,11 @@ func newTestPortalServer(t *testing.T, cfg fileConfig) *portalServer {
 	haproxy := template.Must(template.New("portal_haproxy.tmpl").Parse(`{{define "portal_haproxy.tmpl"}}haproxy {{len .Frontends}} {{len .Backends}} {{.Error}}{{end}}`))
 	errView := template.Must(template.New("portal_error.tmpl").Parse(`{{define "portal_error.tmpl"}}error {{.Title}} {{.Message}}{{end}}`))
 	troubleshoot := template.Must(template.New("portal_troubleshoot.tmpl").Parse(`{{define "portal_troubleshoot.tmpl"}}troubleshoot {{.HistoryAction}}{{end}}`))
-	dashboards := template.Must(template.New("portal_dashboards.tmpl").Parse(`{{define "portal_dashboards.tmpl"}}dashboards {{.SubmissionURL}} {{.SMSGatewayURL}} {{.PushGatewayURL}}{{end}}`))
+	dashboards := template.Must(template.New("portal_dashboards.tmpl").Parse(`{{define "portal_dashboards.tmpl"}}dashboards {{.SubmissionURL}} {{.SMSGatewayURL}} {{.PushGatewayURL}} {{.DeliveryTrackingURL}}{{end}}`))
 	dashboardEmbed := template.Must(template.New("portal_dashboard_embed.tmpl").Parse(`{{define "portal_dashboard_embed.tmpl"}}dashboard {{.Title}} {{.DashboardURL}}{{end}}`))
 	submissionResult := template.Must(template.New("submission_result.tmpl").Parse(`{{define "submission_result.tmpl"}}submission {{.IntentID}} {{.StatusEndpoint}} {{.Status}} {{.RejectedReason}} {{.ExhaustedReason}} {{.CompletedAt}} {{.Error}}{{end}}`))
+	deliveryRead := template.Must(template.New("portal_delivery_read.tmpl").Parse(`{{define "portal_delivery_read.tmpl"}}delivery-read {{.Title}} {{.FormAction}} {{.ResultHint}}{{end}}`))
+	deliveryProducer := template.Must(template.New("portal_delivery_test_producer.tmpl").Parse(`{{define "portal_delivery_test_producer.tmpl"}}delivery-producer {{.FormAction}}{{end}}`))
 	return &portalServer{
 		config: normalizeConfig(cfg),
 		templates: portalTemplates{
@@ -317,6 +384,8 @@ func newTestPortalServer(t *testing.T, cfg fileConfig) *portalServer {
 			dashboards:       dashboards,
 			dashboardEmbed:   dashboardEmbed,
 			submissionResult: submissionResult,
+			deliveryRead:     deliveryRead,
+			deliveryProducer: deliveryProducer,
 		},
 		client: &http.Client{},
 	}
@@ -435,6 +504,7 @@ func TestHandleDashboardsPage(t *testing.T) {
 		SMSGatewayURL:                 "http://sms",
 		PushGatewayURL:                "http://push",
 		SubmissionManagerDashboardURL: "http://grafana/submission-manager",
+		DeliveryTrackingDashboardURL:  "http://grafana/delivery",
 	})
 	req := httptest.NewRequest(http.MethodGet, "/dashboards", nil)
 	req.Header.Set("HX-Request", "true")
@@ -452,6 +522,9 @@ func TestHandleDashboardsPage(t *testing.T) {
 	}
 	if !strings.Contains(body, "/push/ui/metrics") {
 		t.Fatalf("expected push dashboard link, got %q", body)
+	}
+	if !strings.Contains(body, "/dashboards/delivery-tracking") {
+		t.Fatalf("expected delivery dashboard link, got %q", body)
 	}
 }
 
@@ -476,6 +549,32 @@ func TestHandleSubmissionManagerDashboardNotConfigured(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/dashboards/submission-manager", nil)
 	rr := httptest.NewRecorder()
 	server.handleSubmissionManagerDashboard(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+}
+
+func TestHandleDeliveryTrackingDashboard(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		DeliveryTrackingDashboardURL: "http://grafana/delivery",
+	})
+	req := httptest.NewRequest(http.MethodGet, "/dashboards/delivery-tracking", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleDeliveryTrackingDashboard(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "http://grafana/delivery") {
+		t.Fatalf("expected delivery dashboard URL, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleDeliveryTrackingDashboardNotConfigured(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{})
+	req := httptest.NewRequest(http.MethodGet, "/dashboards/delivery-tracking", nil)
+	rr := httptest.NewRecorder()
+	server.handleDeliveryTrackingDashboard(rr, req)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rr.Code)
 	}
@@ -1039,6 +1138,381 @@ func TestHandlePushAPIBadBaseURL(t *testing.T) {
 	}
 }
 
+func TestHandleDeliveryCurrentUINotConfigured(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{})
+	req := httptest.NewRequest(http.MethodGet, "/delivery/ui/current", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleDeliveryCurrentUI(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+}
+
+func TestHandleDeliveryHistoryUINotConfigured(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{})
+	req := httptest.NewRequest(http.MethodGet, "/delivery/ui/history", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleDeliveryHistoryUI(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+}
+
+func TestHandleDeliveryCurrentUIConfigured(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{DeliveryTrackingURL: "http://delivery"})
+	req := httptest.NewRequest(http.MethodGet, "/delivery/ui/current", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleDeliveryCurrentUI(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "/delivery/current") {
+		t.Fatalf("expected delivery current form action, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleDeliveryHistoryUIConfigured(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{DeliveryTrackingURL: "http://delivery"})
+	req := httptest.NewRequest(http.MethodGet, "/delivery/ui/history", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleDeliveryHistoryUI(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "/delivery/history") {
+		t.Fatalf("expected delivery history form action, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleDeliveryCurrentProxy(t *testing.T) {
+	var deliveryCalls int
+	var submissionCalls int
+	delivery := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		deliveryCalls++
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Path != "/v1/intents/intent-1/delivery" {
+			t.Fatalf("expected delivery current path, got %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"error":"not_found"}`)
+	}))
+	defer delivery.Close()
+
+	submission := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		submissionCalls++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer submission.Close()
+
+	server := newTestPortalServer(t, fileConfig{
+		DeliveryTrackingURL:  delivery.URL,
+		SubmissionManagerURL: submission.URL,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/delivery/current?intentId=intent-1", nil)
+	rr := httptest.NewRecorder()
+	server.handleDeliveryCurrent(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+	if rr.Body.String() != `{"error":"not_found"}` {
+		t.Fatalf("expected upstream body passthrough, got %q", rr.Body.String())
+	}
+	if deliveryCalls != 1 {
+		t.Fatalf("expected one delivery call, got %d", deliveryCalls)
+	}
+	if submissionCalls != 0 {
+		t.Fatalf("expected no submission-manager calls, got %d", submissionCalls)
+	}
+}
+
+func TestHandleDeliveryHistoryProxy(t *testing.T) {
+	var deliveryCalls int
+	var submissionCalls int
+	delivery := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		deliveryCalls++
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Path != "/v1/intents/intent-2/delivery/history" {
+			t.Fatalf("expected delivery history path, got %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"intentId":"intent-2","entries":[]}`)
+	}))
+	defer delivery.Close()
+
+	submission := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		submissionCalls++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer submission.Close()
+
+	server := newTestPortalServer(t, fileConfig{
+		DeliveryTrackingURL:  delivery.URL,
+		SubmissionManagerURL: submission.URL,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/delivery/history?intentId=intent-2", nil)
+	rr := httptest.NewRecorder()
+	server.handleDeliveryHistory(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if rr.Body.String() != `{"intentId":"intent-2","entries":[]}` {
+		t.Fatalf("expected upstream body passthrough, got %q", rr.Body.String())
+	}
+	if deliveryCalls != 1 {
+		t.Fatalf("expected one delivery call, got %d", deliveryCalls)
+	}
+	if submissionCalls != 0 {
+		t.Fatalf("expected no submission-manager calls, got %d", submissionCalls)
+	}
+}
+
+func TestHandleDeliveryCurrentNoFallbackWhenDeliveryFails(t *testing.T) {
+	var deliveryCalls int
+	var submissionCalls int
+	delivery := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		deliveryCalls++
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, `{"error":"service_unavailable"}`)
+	}))
+	defer delivery.Close()
+
+	submission := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		submissionCalls++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer submission.Close()
+
+	server := newTestPortalServer(t, fileConfig{
+		DeliveryTrackingURL:  delivery.URL,
+		SubmissionManagerURL: submission.URL,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/delivery/current?intentId=intent-9", nil)
+	rr := httptest.NewRecorder()
+	server.handleDeliveryCurrent(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rr.Code)
+	}
+	if deliveryCalls != 1 {
+		t.Fatalf("expected one delivery call, got %d", deliveryCalls)
+	}
+	if submissionCalls != 0 {
+		t.Fatalf("expected no submission fallback calls, got %d", submissionCalls)
+	}
+}
+
+func TestHandleDeliveryReadNotConfigured(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{})
+	currentReq := httptest.NewRequest(http.MethodGet, "/delivery/current?intentId=intent-1", nil)
+	currentRR := httptest.NewRecorder()
+	server.handleDeliveryCurrent(currentRR, currentReq)
+	if currentRR.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for current route, got %d", currentRR.Code)
+	}
+
+	historyReq := httptest.NewRequest(http.MethodGet, "/delivery/history?intentId=intent-1", nil)
+	historyRR := httptest.NewRecorder()
+	server.handleDeliveryHistory(historyRR, historyReq)
+	if historyRR.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for history route, got %d", historyRR.Code)
+	}
+}
+
+func TestHandleDeliveryTestProducerGuardPrecedenceProdAndDisabled(t *testing.T) {
+	var deliveryCalls int
+	delivery := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		deliveryCalls++
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer delivery.Close()
+
+	server := newTestPortalServer(t, fileConfig{
+		DeliveryTrackingURL:         delivery.URL,
+		PortalEnvironment:           "prod",
+		DeliveryTestProducerEnabled: false,
+	})
+
+	uiReq := httptest.NewRequest(http.MethodGet, "/delivery/ui/test-producer", nil)
+	uiRR := httptest.NewRecorder()
+	server.handleDeliveryTestProducerUI(uiRR, uiReq)
+	if uiRR.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for UI route, got %d", uiRR.Code)
+	}
+
+	postReq := httptest.NewRequest(http.MethodPost, "/delivery/test-producer", strings.NewReader("intentId=intent-1&providerDeliverySignal=in_progress"))
+	postReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	postRR := httptest.NewRecorder()
+	server.handleDeliveryTestProducer(postRR, postReq)
+	if postRR.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for POST route, got %d", postRR.Code)
+	}
+	if deliveryCalls != 0 {
+		t.Fatalf("expected no upstream webhook calls, got %d", deliveryCalls)
+	}
+}
+
+func TestHandleDeliveryTestProducerGuardDisabledInNonProd(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		DeliveryTrackingURL:         "http://delivery",
+		PortalEnvironment:           "staging",
+		DeliveryTestProducerEnabled: false,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/delivery/test-producer", strings.NewReader("intentId=intent-1&providerDeliverySignal=in_progress"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	server.handleDeliveryTestProducer(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+}
+
+func TestHandleDeliveryTestProducerNotConfiguredWithoutDeliveryURL(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		PortalEnvironment:           "staging",
+		DeliveryTestProducerEnabled: true,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/delivery/test-producer", strings.NewReader("intentId=intent-1&providerDeliverySignal=in_progress"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	server.handleDeliveryTestProducer(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+}
+
+func TestHandleDeliveryTestProducerUIAvailableInNonProdWhenEnabled(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		DeliveryTrackingURL:         "http://delivery",
+		PortalEnvironment:           "dev",
+		DeliveryTestProducerEnabled: true,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/delivery/ui/test-producer", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleDeliveryTestProducerUI(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "/delivery/test-producer") {
+		t.Fatalf("expected test producer action, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleDeliveryTestProducerProxy(t *testing.T) {
+	var deliveryCalls int
+	var submissionCalls int
+	var payload map[string]any
+	delivery := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		deliveryCalls++
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/v1/delivery/provider-signal-webhook" {
+			t.Fatalf("expected webhook path, got %q", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = io.WriteString(w, `{"status":"accepted"}`)
+	}))
+	defer delivery.Close()
+
+	submission := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		submissionCalls++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer submission.Close()
+
+	server := newTestPortalServer(t, fileConfig{
+		DeliveryTrackingURL:         delivery.URL,
+		SubmissionManagerURL:        submission.URL,
+		PortalEnvironment:           "staging",
+		DeliveryTestProducerEnabled: true,
+	})
+	form := "intentId=intent-42&providerDeliverySignal=in_progress&providerObservedAt=2026-02-10T10:00:00Z&providerEventId=evt-1&providerMetadata=%7B%22provider%22%3A%22twilio%22%7D"
+	req := httptest.NewRequest(http.MethodPost, "/delivery/test-producer", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	server.handleDeliveryTestProducer(rr, req)
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", rr.Code)
+	}
+	if rr.Body.String() != `{"status":"accepted"}` {
+		t.Fatalf("expected upstream body passthrough, got %q", rr.Body.String())
+	}
+	if deliveryCalls != 1 {
+		t.Fatalf("expected one delivery webhook call, got %d", deliveryCalls)
+	}
+	if submissionCalls != 0 {
+		t.Fatalf("expected no submission-manager calls, got %d", submissionCalls)
+	}
+	if payload["intentId"] != "intent-42" {
+		t.Fatalf("unexpected intentId payload: %#v", payload["intentId"])
+	}
+	if payload["providerDeliverySignal"] != "in_progress" {
+		t.Fatalf("unexpected signal payload: %#v", payload["providerDeliverySignal"])
+	}
+	if payload["providerObservedAt"] != "2026-02-10T10:00:00Z" {
+		t.Fatalf("unexpected providerObservedAt payload: %#v", payload["providerObservedAt"])
+	}
+	if payload["providerEventId"] != "evt-1" {
+		t.Fatalf("unexpected providerEventId payload: %#v", payload["providerEventId"])
+	}
+	metadata, ok := payload["providerMetadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected providerMetadata object, got %#v", payload["providerMetadata"])
+	}
+	if metadata["provider"] != "twilio" {
+		t.Fatalf("unexpected providerMetadata payload: %#v", metadata)
+	}
+}
+
+func TestHandleDeliveryTestProducerRejectsInvalidMetadata(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		DeliveryTrackingURL:         "http://delivery",
+		PortalEnvironment:           "staging",
+		DeliveryTestProducerEnabled: true,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/delivery/test-producer", strings.NewReader("intentId=intent-1&providerDeliverySignal=in_progress&providerMetadata=not-json"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	server.handleDeliveryTestProducer(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+func TestDeliveryTestProducerNavEnabled(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		DeliveryTrackingURL:         "http://delivery",
+		PortalEnvironment:           "staging",
+		DeliveryTestProducerEnabled: true,
+	})
+	if !server.deliveryTestProducerNavEnabled() {
+		t.Fatal("expected delivery test producer nav to be enabled")
+	}
+
+	server = newTestPortalServer(t, fileConfig{
+		DeliveryTrackingURL:         "http://delivery",
+		PortalEnvironment:           "prod",
+		DeliveryTestProducerEnabled: true,
+	})
+	if server.deliveryTestProducerNavEnabled() {
+		t.Fatal("expected delivery test producer nav to be disabled in prod")
+	}
+}
+
 func TestLoadConfigWithComments(t *testing.T) {
 	content := "# comment\n{\n  \"title\": \"Admin\",\n  \"smsGatewayUrl\": \"http://sms\"\n}\n"
 	dir := t.TempDir()
@@ -1122,12 +1596,14 @@ func TestLoadPortalTemplates(t *testing.T) {
 	write("portal_dashboards.tmpl", `{{define "portal_dashboards.tmpl"}}dashboards{{end}}`)
 	write("portal_dashboard_embed.tmpl", `{{define "portal_dashboard_embed.tmpl"}}dashboard{{end}}`)
 	write("submission_result.tmpl", `{{define "submission_result.tmpl"}}submission{{end}}`)
+	write("portal_delivery_read.tmpl", `{{define "portal_delivery_read.tmpl"}}delivery-read{{end}}`)
+	write("portal_delivery_test_producer.tmpl", `{{define "portal_delivery_test_producer.tmpl"}}delivery-producer{{end}}`)
 
 	templates, err := loadPortalTemplates(dir)
 	if err != nil {
 		t.Fatalf("loadPortalTemplates: %v", err)
 	}
-	if templates.topbar == nil || templates.overview == nil || templates.haproxy == nil || templates.errView == nil || templates.troubleshoot == nil || templates.dashboards == nil || templates.dashboardEmbed == nil || templates.submissionResult == nil {
+	if templates.topbar == nil || templates.overview == nil || templates.haproxy == nil || templates.errView == nil || templates.troubleshoot == nil || templates.dashboards == nil || templates.dashboardEmbed == nil || templates.submissionResult == nil || templates.deliveryRead == nil || templates.deliveryProducer == nil {
 		t.Fatal("expected templates to be loaded")
 	}
 }

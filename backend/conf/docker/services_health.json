@@ -222,6 +222,62 @@
       ]
     },
     {
+      "id": "delivery-tracking-1",
+      "label": "Delivery Tracking (1)",
+      "startCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "up",
+        "-d",
+        "delivery-tracking-1"
+      ],
+      "stopCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "stop",
+        "delivery-tracking-1"
+      ],
+      "instances": [
+        {
+          "name": "delivery-tracking-1",
+          "addr": ":18084",
+          "healthUrl": "http://localhost:18084/readyz"
+        }
+      ]
+    },
+    {
+      "id": "delivery-tracking-2",
+      "label": "Delivery Tracking (2)",
+      "startCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "up",
+        "-d",
+        "delivery-tracking-2"
+      ],
+      "stopCommand": [
+        "docker",
+        "compose",
+        "-f",
+        "../docker-compose.yml",
+        "stop",
+        "delivery-tracking-2"
+      ],
+      "instances": [
+        {
+          "name": "delivery-tracking-2",
+          "addr": ":18085",
+          "healthUrl": "http://localhost:18085/readyz"
+        }
+      ]
+    },
+    {
       "id": "prometheus",
       "label": "Prometheus",
       "startCommand": [
