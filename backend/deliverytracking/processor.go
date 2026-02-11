@@ -176,6 +176,14 @@ func (p *Processor) ApplyCorrelatedDeliveryRecord(ctx context.Context, record Co
 	return p.store.applyCorrelatedDeliveryRecord(ctx, record)
 }
 
+// CorrelateByIntentID classifies a webhook signal by canonical intentId lookup.
+func (p *Processor) CorrelateByIntentID(ctx context.Context, intentID string) (DeliveryCorrelationResult, error) {
+	if p == nil || p.store == nil {
+		return DeliveryCorrelationInvalid, errors.New("processor store is required")
+	}
+	return p.store.correlateByIntentID(ctx, intentID)
+}
+
 // EvaluateDeliveryFreshnessStaleness marks due unresolved intents as stale.
 func (p *Processor) EvaluateDeliveryFreshnessStaleness(ctx context.Context) (int64, error) {
 	if p == nil || p.store == nil {
@@ -486,6 +494,35 @@ func (s *sqlStore) evaluateDeliveryFreshnessStaleness(ctx context.Context) (affe
 		)
 	}
 	return affected, nil
+}
+
+func (s *sqlStore) correlateByIntentID(ctx context.Context, intentID string) (DeliveryCorrelationResult, error) {
+	key := strings.TrimSpace(intentID)
+	if key == "" {
+		return DeliveryCorrelationInvalid, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	row := s.db.QueryRowContext(
+		ctx,
+		`SELECT CASE WHEN EXISTS (
+      SELECT 1
+      FROM dbo.submission_intents
+      WHERE intent_id = @p1
+    ) THEN 1 ELSE 0 END`,
+		key,
+	)
+
+	var exists int
+	if err := row.Scan(&exists); err != nil {
+		return DeliveryCorrelationInvalid, err
+	}
+	if exists == 1 {
+		return DeliveryCorrelationMatched, nil
+	}
+	return DeliveryCorrelationUnmatched, nil
 }
 
 func (s *sqlStore) observeProviderSignal(source string, result DeliveryCorrelationResult) {
