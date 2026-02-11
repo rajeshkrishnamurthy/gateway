@@ -15,7 +15,7 @@ This spec defines:
 - portal configuration for existing surfaces plus delivery-tracking integration
 - portal routes and UI views for current delivery and delivery history reads
 - portal-operated provider signal test production for non-production environments
-- dashboard-link behavior for delivery observability
+- dashboard-link behavior for delivery observability (`Delivery Tracking Health` and `Delivery Tracking Activity`)
 - boundary constraints that preserve dedicated delivery-tracking ownership
 
 ## Non-goals
@@ -53,7 +53,8 @@ Fields:
 - `commandCenterUrl` (optional) - base URL for the services health console
 - `haproxyStatsUrl` (optional) - HAProxy CSV stats endpoint (`/stats;csv`)
 - `deliveryTrackingUrl` (optional) - base URL for delivery-tracking runtime behind HAProxy
-- `deliveryTrackingDashboardUrl` (optional) - Grafana dashboard URL for delivery-tracking observability
+- `deliveryTrackingDashboardUrl` (optional) - Grafana dashboard URL for `Delivery Tracking Health` (`delivery-tracking-overview`)
+- `deliveryTrackingActivityDashboardUrl` (optional) - Grafana dashboard URL for `Delivery Tracking Activity` (`delivery-tracking-activity`)
 - `portalEnvironment` (optional) - one of `dev`, `staging`, `prod`; defaults to `prod` when omitted
 - `deliveryTestProducerEnabled` (optional) - enables operator-triggered provider signal test production only when `portalEnvironment` is not `prod`; defaults to `false`
 
@@ -69,6 +70,7 @@ Portal must expose these endpoints:
 - `GET /dashboards` - dashboards page
 - `GET /dashboards/submission-manager` - embedded SubmissionManager dashboard when configured
 - `GET /dashboards/delivery-tracking` - embedded delivery-tracking dashboard when configured
+- `GET /dashboards/delivery-tracking-activity` - embedded delivery-tracking activity dashboard when configured
 - `GET /haproxy` - HAProxy status view
 - `GET /troubleshoot` - troubleshoot page with intent history panel
 - `POST /troubleshoot/history` - proxies form data to SubmissionManager `/ui/history`
@@ -131,7 +133,7 @@ Top navigation must remain config-gated and must include delivery operations whe
 - `Delivery History` links to `/delivery/ui/history` when `deliveryTrackingUrl` is set
 - `Delivery Test Producer` links to `/delivery/ui/test-producer` only when `deliveryTestProducerEnabled=true` and `portalEnvironment` is non-production
 
-Dashboards page must present existing dashboard links and, when configured, a delivery-tracking dashboard link at `/dashboards/delivery-tracking`.
+Dashboards page must present existing dashboard links and, when configured, delivery-tracking dashboard links at `/dashboards/delivery-tracking` (health) and `/dashboards/delivery-tracking-activity` (activity).
 
 ## Invariants
 
@@ -179,7 +181,7 @@ Criterion 4: no delivery read route in the portal calls SubmissionManager, even 
 
 Criterion 5: when `deliveryTrackingDashboardUrl` is configured, `/dashboards` shows a delivery-tracking link and `/dashboards/delivery-tracking` renders embedded dashboard content.
 
-Criterion 6: when `deliveryTrackingDashboardUrl` is configured, the linked dashboard surfaces delivery observability for `correlation result` and canonical delivery-status count summaries (`unknown`, `in_progress`, `delivered`, `failed`).
+Criterion 6: when `deliveryTrackingActivityDashboardUrl` is configured, `/dashboards` shows a delivery-tracking activity link and `/dashboards/delivery-tracking-activity` renders embedded dashboard content.
 
 Criterion 7: when `portalEnvironment=prod`, both delivery test-producer routes return `403` and no upstream webhook request is emitted.
 
@@ -190,3 +192,5 @@ Criterion 9: portal delivery routes remain functional across delivery runtime in
 Criterion 10: portal logs/telemetry for delivery proxy calls identify only HAProxy target hosts configured by `deliveryTrackingUrl`, with no direct instance targets.
 
 Criterion 11: when `portalEnvironment=prod` and `deliveryTestProducerEnabled=false` simultaneously, delivery test-producer routes return `403` (not `404`) and no upstream webhook request is emitted.
+
+Criterion 12: when both delivery dashboard URLs are configured, both dashboard routes remain independently accessible and neither route rewrites or aliases to the other.

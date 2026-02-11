@@ -62,6 +62,7 @@ func main() {
 	mux.HandleFunc("/dashboards", server.handleDashboards)
 	mux.HandleFunc("/dashboards/submission-manager", server.handleSubmissionManagerDashboard)
 	mux.HandleFunc("/dashboards/delivery-tracking", server.handleDeliveryTrackingDashboard)
+	mux.HandleFunc("/dashboards/delivery-tracking-activity", server.handleDeliveryTrackingActivityDashboard)
 	mux.HandleFunc("/troubleshoot", server.handleTroubleshoot)
 	mux.HandleFunc("/troubleshoot/history", server.handleTroubleshootHistory)
 	mux.HandleFunc("/push/ui", server.handlePushUI)

@@ -4,7 +4,7 @@ This command provides a Setu-branded portal with Command Center as the home view
 
 The portal also exposes a Troubleshoot page that lets you query intent history by intentId when SubmissionManager is configured.
 
-The Dashboards page groups gateway metrics pages and the SubmissionManager Grafana dashboard (embedded at `/dashboards/submission-manager`).
+The Dashboards page groups gateway metrics pages and embedded Grafana dashboards for SubmissionManager, Delivery Tracking Health (`/dashboards/delivery-tracking`), and Delivery Tracking Activity (`/dashboards/delivery-tracking-activity`) when configured.
 
 ## Run (Docker-only MVP)
 
@@ -37,6 +37,8 @@ The config supports full-line `#` comments only.
 - `pushGatewayUrl`: Base URL for the push gateway UI (prefer the HAProxy push frontend).
 - `submissionManagerUrl`: Base URL for SubmissionManager (for test submits).
 - `submissionManagerDashboardUrl`: Grafana dashboard URL for SubmissionManager metrics.
+- `deliveryTrackingDashboardUrl`: Grafana dashboard URL for Delivery Tracking Health metrics.
+- `deliveryTrackingActivityDashboardUrl`: Grafana dashboard URL for Delivery Tracking Activity metrics.
 - `smsSubmissionTarget`: SubmissionTarget used when the portal submits test SMS via SubmissionManager.
 - `pushSubmissionTarget`: SubmissionTarget used when the portal submits test push via SubmissionManager.
 - `commandCenterUrl`: Base URL for the services health console.
