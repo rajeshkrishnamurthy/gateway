@@ -235,8 +235,8 @@ The gateway stack is intentionally small and explicit:
 
 - Gateways: `cmd/sms-gateway` and `cmd/push-gateway` run as containers. Provider semantics and instance-agnostic settings (like `grafanaDashboardUrl`) live in `conf/docker/config_docker.json` and `conf/docker/config_push_docker.json`. Secrets are provided via environment variables only.
 - HAProxy: Docker Compose uses `conf/docker/haproxy_docker.cfg` to front stable ports and route to multiple gateway instances. Gateways remain unaware of peers.
-- Prometheus: Docker Compose uses `conf/docker/prometheus_docker.yml` to scrape gateway instances directly (do not scrape HAProxy). Jobs separate SMS vs push.
-- Grafana: provisioned dashboards live under `conf/grafana/dashboards`. The gateway UI Metrics link points to `grafanaDashboardUrl` from the gateway config (defaults to the SMS/push dashboard URLs).
+- Prometheus: Docker Compose uses `conf/docker/prometheus_docker.yml` to scrape runtime instances directly (do not scrape HAProxy). Jobs are separate for SMS gateway, push gateway, SubmissionManager, and delivery-tracking.
+- Grafana: provisioned dashboards live under `conf/grafana/dashboards` and include gateway, SubmissionManager, and delivery-tracking dashboards. The gateway UI Metrics link points to `grafanaDashboardUrl` from gateway config; the admin portal dashboard links come from `submissionManagerDashboardUrl`, `deliveryTrackingDashboardUrl`, and `deliveryTrackingActivityDashboardUrl`.
 
 ## Services health console
 

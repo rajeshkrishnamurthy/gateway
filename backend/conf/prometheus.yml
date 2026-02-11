@@ -1,5 +1,5 @@
-# Scrape configuration for the gateway /metrics endpoint.
-# Update the target ports to match your running instances.
+# Scrape configuration for local runtime /metrics endpoints.
+# Update target ports to match your running instances.
 
 global:
   scrape_interval: 5s
@@ -14,3 +14,8 @@ scrape_configs:
     metrics_path: "/metrics"
     static_configs:
       - targets: ["localhost:19080", "localhost:19081", "localhost:19082"]
+
+  - job_name: "delivery-tracking"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["localhost:18084", "localhost:18085"]

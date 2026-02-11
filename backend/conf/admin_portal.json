@@ -11,7 +11,8 @@
   "commandCenterUrl": "http://localhost:8070",
   "haproxyStatsUrl": "http://localhost:8404/stats;csv",
   "deliveryTrackingUrl": "http://localhost:8083",
-  "deliveryTrackingDashboardUrl": "",
+  "deliveryTrackingDashboardUrl": "http://localhost:3000/d/delivery-tracking-overview?kiosk=tv",
+  "deliveryTrackingActivityDashboardUrl": "http://localhost:3000/d/delivery-tracking-activity?kiosk=tv",
   "portalEnvironment": "prod",
   "deliveryTestProducerEnabled": false
 }

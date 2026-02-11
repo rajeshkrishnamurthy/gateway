@@ -10,7 +10,8 @@
   "commandCenterUrl": "http://host.docker.internal:8070",
   "haproxyStatsUrl": "http://haproxy:8404/stats;csv",
   "deliveryTrackingUrl": "http://haproxy:8083",
-  "deliveryTrackingDashboardUrl": "",
+  "deliveryTrackingDashboardUrl": "http://localhost:3000/d/delivery-tracking-overview?kiosk=tv",
+  "deliveryTrackingActivityDashboardUrl": "http://localhost:3000/d/delivery-tracking-activity?kiosk=tv",
   "portalEnvironment": "dev",
   "deliveryTestProducerEnabled": true
 }

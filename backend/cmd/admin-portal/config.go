@@ -57,6 +57,7 @@ func normalizeConfig(cfg fileConfig) fileConfig {
 	cfg.HAProxyStatsURL = strings.TrimSpace(cfg.HAProxyStatsURL)
 	cfg.DeliveryTrackingURL = strings.TrimRight(strings.TrimSpace(cfg.DeliveryTrackingURL), "/")
 	cfg.DeliveryTrackingDashboardURL = strings.TrimRight(strings.TrimSpace(cfg.DeliveryTrackingDashboardURL), "/")
+	cfg.DeliveryTrackingActivityDashboardURL = strings.TrimRight(strings.TrimSpace(cfg.DeliveryTrackingActivityDashboardURL), "/")
 	cfg.PortalEnvironment = normalizePortalEnvironment(cfg.PortalEnvironment)
 	return cfg
 }

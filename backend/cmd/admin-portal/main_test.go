@@ -140,15 +140,16 @@ func TestBuildTargetURLNoEmbed(t *testing.T) {
 
 func TestNormalizeConfig(t *testing.T) {
 	cfg := fileConfig{
-		Title:                         "  Portal  ",
-		SMSGatewayURL:                 "http://sms.example.com/",
-		PushGatewayURL:                "http://push.example.com///",
-		SubmissionManagerDashboardURL: " http://grafana.example.com/d/submission ",
-		CommandCenterURL:              "http://cc.example.com/ ",
-		HAProxyStatsURL:               " http://haproxy.example.com/stats;csv ",
-		DeliveryTrackingURL:           " http://haproxy.example.com:8083/ ",
-		DeliveryTrackingDashboardURL:  " http://grafana.example.com/d/delivery ",
-		PortalEnvironment:             " STAGING ",
+		Title:                                "  Portal  ",
+		SMSGatewayURL:                        "http://sms.example.com/",
+		PushGatewayURL:                       "http://push.example.com///",
+		SubmissionManagerDashboardURL:        " http://grafana.example.com/d/submission ",
+		CommandCenterURL:                     "http://cc.example.com/ ",
+		HAProxyStatsURL:                      " http://haproxy.example.com/stats;csv ",
+		DeliveryTrackingURL:                  " http://haproxy.example.com:8083/ ",
+		DeliveryTrackingDashboardURL:         " http://grafana.example.com/d/delivery ",
+		DeliveryTrackingActivityDashboardURL: " http://grafana.example.com/d/delivery-activity ",
+		PortalEnvironment:                    " STAGING ",
 	}
 	got := normalizeConfig(cfg)
 	if got.Title != "Portal" {
@@ -174,6 +175,9 @@ func TestNormalizeConfig(t *testing.T) {
 	}
 	if got.DeliveryTrackingDashboardURL != "http://grafana.example.com/d/delivery" {
 		t.Fatalf("unexpected delivery dashboard url: %q", got.DeliveryTrackingDashboardURL)
+	}
+	if got.DeliveryTrackingActivityDashboardURL != "http://grafana.example.com/d/delivery-activity" {
+		t.Fatalf("unexpected delivery activity dashboard url: %q", got.DeliveryTrackingActivityDashboardURL)
 	}
 	if got.PortalEnvironment != "staging" {
 		t.Fatalf("unexpected portal environment: %q", got.PortalEnvironment)
@@ -368,7 +372,7 @@ func newTestPortalServer(t *testing.T, cfg fileConfig) *portalServer {
 	haproxy := template.Must(template.New("portal_haproxy.tmpl").Parse(`{{define "portal_haproxy.tmpl"}}haproxy {{len .Frontends}} {{len .Backends}} {{.Error}}{{end}}`))
 	errView := template.Must(template.New("portal_error.tmpl").Parse(`{{define "portal_error.tmpl"}}error {{.Title}} {{.Message}}{{end}}`))
 	troubleshoot := template.Must(template.New("portal_troubleshoot.tmpl").Parse(`{{define "portal_troubleshoot.tmpl"}}troubleshoot {{.HistoryAction}}{{end}}`))
-	dashboards := template.Must(template.New("portal_dashboards.tmpl").Parse(`{{define "portal_dashboards.tmpl"}}dashboards {{.SubmissionURL}} {{.SMSGatewayURL}} {{.PushGatewayURL}} {{.DeliveryTrackingURL}}{{end}}`))
+	dashboards := template.Must(template.New("portal_dashboards.tmpl").Parse(`{{define "portal_dashboards.tmpl"}}dashboards {{.SubmissionURL}} {{.SMSGatewayURL}} {{.PushGatewayURL}} {{.DeliveryTrackingURL}} {{.DeliveryTrackingActivityURL}}{{end}}`))
 	dashboardEmbed := template.Must(template.New("portal_dashboard_embed.tmpl").Parse(`{{define "portal_dashboard_embed.tmpl"}}dashboard {{.Title}} {{.DashboardURL}}{{end}}`))
 	submissionResult := template.Must(template.New("submission_result.tmpl").Parse(`{{define "submission_result.tmpl"}}submission {{.IntentID}} {{.StatusEndpoint}} {{.Status}} {{.RejectedReason}} {{.ExhaustedReason}} {{.CompletedAt}} {{.Error}}{{end}}`))
 	deliveryRead := template.Must(template.New("portal_delivery_read.tmpl").Parse(`{{define "portal_delivery_read.tmpl"}}delivery-read {{.Title}} {{.FormAction}} {{.ResultHint}}{{end}}`))
@@ -501,10 +505,11 @@ func TestHandleTroubleshootPage(t *testing.T) {
 
 func TestHandleDashboardsPage(t *testing.T) {
 	server := newTestPortalServer(t, fileConfig{
-		SMSGatewayURL:                 "http://sms",
-		PushGatewayURL:                "http://push",
-		SubmissionManagerDashboardURL: "http://grafana/submission-manager",
-		DeliveryTrackingDashboardURL:  "http://grafana/delivery",
+		SMSGatewayURL:                        "http://sms",
+		PushGatewayURL:                       "http://push",
+		SubmissionManagerDashboardURL:        "http://grafana/submission-manager",
+		DeliveryTrackingDashboardURL:         "http://grafana/delivery",
+		DeliveryTrackingActivityDashboardURL: "http://grafana/delivery-activity",
 	})
 	req := httptest.NewRequest(http.MethodGet, "/dashboards", nil)
 	req.Header.Set("HX-Request", "true")
@@ -525,6 +530,9 @@ func TestHandleDashboardsPage(t *testing.T) {
 	}
 	if !strings.Contains(body, "/dashboards/delivery-tracking") {
 		t.Fatalf("expected delivery dashboard link, got %q", body)
+	}
+	if !strings.Contains(body, "/dashboards/delivery-tracking-activity") {
+		t.Fatalf("expected delivery activity dashboard link, got %q", body)
 	}
 }
 
@@ -575,6 +583,56 @@ func TestHandleDeliveryTrackingDashboardNotConfigured(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/dashboards/delivery-tracking", nil)
 	rr := httptest.NewRecorder()
 	server.handleDeliveryTrackingDashboard(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+}
+
+func TestHandleDeliveryTrackingDashboardDoesNotAliasActivityDashboard(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		DeliveryTrackingActivityDashboardURL: "http://grafana/delivery-activity",
+	})
+	req := httptest.NewRequest(http.MethodGet, "/dashboards/delivery-tracking", nil)
+	rr := httptest.NewRecorder()
+	server.handleDeliveryTrackingDashboard(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+}
+
+func TestHandleDeliveryTrackingActivityDashboard(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		DeliveryTrackingActivityDashboardURL: "http://grafana/delivery-activity",
+	})
+	req := httptest.NewRequest(http.MethodGet, "/dashboards/delivery-tracking-activity", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	server.handleDeliveryTrackingActivityDashboard(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "http://grafana/delivery-activity") {
+		t.Fatalf("expected delivery activity dashboard URL, got %q", rr.Body.String())
+	}
+}
+
+func TestHandleDeliveryTrackingActivityDashboardNotConfigured(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{})
+	req := httptest.NewRequest(http.MethodGet, "/dashboards/delivery-tracking-activity", nil)
+	rr := httptest.NewRecorder()
+	server.handleDeliveryTrackingActivityDashboard(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+}
+
+func TestHandleDeliveryTrackingActivityDashboardDoesNotAliasHealthDashboard(t *testing.T) {
+	server := newTestPortalServer(t, fileConfig{
+		DeliveryTrackingDashboardURL: "http://grafana/delivery",
+	})
+	req := httptest.NewRequest(http.MethodGet, "/dashboards/delivery-tracking-activity", nil)
+	rr := httptest.NewRecorder()
+	server.handleDeliveryTrackingActivityDashboard(rr, req)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rr.Code)
 	}

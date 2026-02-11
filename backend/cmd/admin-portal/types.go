@@ -7,19 +7,20 @@ import (
 )
 
 type fileConfig struct {
-	Title                         string `json:"title"`
-	SMSGatewayURL                 string `json:"smsGatewayUrl"`
-	PushGatewayURL                string `json:"pushGatewayUrl"`
-	SubmissionManagerURL          string `json:"submissionManagerUrl"`
-	SubmissionManagerDashboardURL string `json:"submissionManagerDashboardUrl"`
-	SMSSubmissionTarget           string `json:"smsSubmissionTarget"`
-	PushSubmissionTarget          string `json:"pushSubmissionTarget"`
-	CommandCenterURL              string `json:"commandCenterUrl"`
-	HAProxyStatsURL               string `json:"haproxyStatsUrl"`
-	DeliveryTrackingURL           string `json:"deliveryTrackingUrl"`
-	DeliveryTrackingDashboardURL  string `json:"deliveryTrackingDashboardUrl"`
-	PortalEnvironment             string `json:"portalEnvironment"`
-	DeliveryTestProducerEnabled   bool   `json:"deliveryTestProducerEnabled"`
+	Title                                string `json:"title"`
+	SMSGatewayURL                        string `json:"smsGatewayUrl"`
+	PushGatewayURL                       string `json:"pushGatewayUrl"`
+	SubmissionManagerURL                 string `json:"submissionManagerUrl"`
+	SubmissionManagerDashboardURL        string `json:"submissionManagerDashboardUrl"`
+	SMSSubmissionTarget                  string `json:"smsSubmissionTarget"`
+	PushSubmissionTarget                 string `json:"pushSubmissionTarget"`
+	CommandCenterURL                     string `json:"commandCenterUrl"`
+	HAProxyStatsURL                      string `json:"haproxyStatsUrl"`
+	DeliveryTrackingURL                  string `json:"deliveryTrackingUrl"`
+	DeliveryTrackingDashboardURL         string `json:"deliveryTrackingDashboardUrl"`
+	DeliveryTrackingActivityDashboardURL string `json:"deliveryTrackingActivityDashboardUrl"`
+	PortalEnvironment                    string `json:"portalEnvironment"`
+	DeliveryTestProducerEnabled          bool   `json:"deliveryTestProducerEnabled"`
 }
 
 type portalTemplates struct {
@@ -110,10 +111,11 @@ type topbarView struct {
 }
 
 type dashboardsView struct {
-	SubmissionURL       string
-	SMSGatewayURL       string
-	PushGatewayURL      string
-	DeliveryTrackingURL string
+	SubmissionURL               string
+	SMSGatewayURL               string
+	PushGatewayURL              string
+	DeliveryTrackingURL         string
+	DeliveryTrackingActivityURL string
 }
 
 type dashboardEmbedView struct {

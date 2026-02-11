@@ -1,4 +1,4 @@
-# Scrape configuration for Docker Compose gateway targets.
+# Scrape configuration for Docker Compose runtime targets.
 
 global:
   scrape_interval: 5s
@@ -18,3 +18,8 @@ scrape_configs:
     metrics_path: "/metrics"
     static_configs:
       - targets: ["submission-manager-1:8082", "submission-manager-2:8082"]
+
+  - job_name: "delivery-tracking"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["delivery-tracking-1:8083", "delivery-tracking-2:8083"]

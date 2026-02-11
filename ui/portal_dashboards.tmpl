@@ -7,7 +7,7 @@
   </header>
 
   <section class="panel">
-    {{if or .SubmissionURL .SMSGatewayURL .PushGatewayURL .DeliveryTrackingURL}}
+    {{if or .SubmissionURL .SMSGatewayURL .PushGatewayURL .DeliveryTrackingURL .DeliveryTrackingActivityURL}}
     <div class="dashboard-list">
       {{if .SubmissionURL}}
       <a class="dashboard-item" href="{{.SubmissionURL}}" aria-label="Open Submission Manager dashboard">
@@ -72,8 +72,27 @@
           </svg>
         </span>
         <div class="dashboard-body">
-          <div class="dashboard-title">Delivery Tracking</div>
-          <div class="dashboard-meta">Delivery observability</div>
+          <div class="dashboard-title">Delivery Tracking Health</div>
+          <div class="dashboard-meta">Trouble detection KPIs</div>
+        </div>
+        <span class="dashboard-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+      </a>
+      {{end}}
+      {{if .DeliveryTrackingActivityURL}}
+      <a class="dashboard-item" href="{{.DeliveryTrackingActivityURL}}" aria-label="Open Delivery Tracking activity dashboard">
+        <span class="dashboard-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M4 5h16v14H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 15v-4M12 15v-6M16 15v-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <div class="dashboard-body">
+          <div class="dashboard-title">Delivery Tracking Activity</div>
+          <div class="dashboard-meta">Past window activity summary</div>
         </div>
         <span class="dashboard-chevron" aria-hidden="true">
           <svg viewBox="0 0 24 24">
