@@ -72,6 +72,9 @@ func TestLoadRegistryValidConfig(t *testing.T) {
 	if contract.Webhook.URL != "http://localhost:9999/webhook" {
 		t.Fatalf("expected webhook url, got %q", contract.Webhook.URL)
 	}
+	if contract.DeliveryTracking.Mode != DeliveryTrackingModeOff {
+		t.Fatalf("expected default deliveryTracking mode off, got %q", contract.DeliveryTracking.Mode)
+	}
 
 	pushContract, ok := registry.ContractFor("push.realtime")
 	if !ok {
@@ -82,6 +85,9 @@ func TestLoadRegistryValidConfig(t *testing.T) {
 	}
 	if pushContract.MaxAttempts != 3 {
 		t.Fatalf("expected maxAttempts 3, got %d", pushContract.MaxAttempts)
+	}
+	if pushContract.DeliveryTracking.Mode != DeliveryTrackingModeOff {
+		t.Fatalf("expected default deliveryTracking mode off, got %q", pushContract.DeliveryTracking.Mode)
 	}
 }
 
@@ -134,6 +140,68 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
 }
 `,
 			wantContain: "gatewayType",
+		},
+		{
+			name: "delivery tracking on missing staleAfterSeconds",
+			config: `{
+  "targets": [
+    {
+      "submissionTarget": "sms.realtime",
+      "gatewayType": "sms",
+      "gatewayUrl": "http://localhost:8080",
+      "policy": "deadline",
+      "maxAcceptanceSeconds": 30,
+      "terminalOutcomes": ["invalid_request"],
+      "deliveryTracking": {
+        "mode": "on"
+      }
+    }
+  ]
+}
+`,
+			wantContain: "deliveryTracking.staleAfterSeconds",
+		},
+		{
+			name: "delivery tracking on non-positive staleAfterSeconds",
+			config: `{
+  "targets": [
+    {
+      "submissionTarget": "sms.realtime",
+      "gatewayType": "sms",
+      "gatewayUrl": "http://localhost:8080",
+      "policy": "deadline",
+      "maxAcceptanceSeconds": 30,
+      "terminalOutcomes": ["invalid_request"],
+      "deliveryTracking": {
+        "mode": "on",
+        "staleAfterSeconds": 0
+      }
+    }
+  ]
+}
+`,
+			wantContain: "deliveryTracking.staleAfterSeconds",
+		},
+		{
+			name: "delivery tracking invalid mode",
+			config: `{
+  "targets": [
+    {
+      "submissionTarget": "sms.realtime",
+      "gatewayType": "sms",
+      "gatewayUrl": "http://localhost:8080",
+      "policy": "deadline",
+      "maxAcceptanceSeconds": 30,
+      "terminalOutcomes": ["invalid_request"],
+      "deliveryTracking": {
+        "mode": "sometimes",
+        "staleAfterSeconds": 10
+      }
+    }
+  ]
+}
+`,
+			wantContain: "deliveryTracking.mode",
 		},
 		{
 			name: "unknown terminal outcome",
@@ -378,6 +446,43 @@ func TestLoadRegistryRejectsInvalidConfig(t *testing.T) {
 				t.Fatalf("expected error containing %q, got %q", tc.wantContain, err.Error())
 			}
 		})
+	}
+}
+
+func TestLoadRegistryDeliveryTrackingOn(t *testing.T) {
+	config := `{
+  "allowUnsignedWebhooks": true,
+  "targets": [
+    {
+      "submissionTarget": "sms.realtime",
+      "gatewayType": "sms",
+      "gatewayUrl": "http://localhost:8080",
+      "policy": "deadline",
+      "maxAcceptanceSeconds": 30,
+      "terminalOutcomes": ["invalid_request"],
+      "deliveryTracking": {
+        "mode": "on",
+        "staleAfterSeconds": 120
+      }
+    }
+  ]
+}
+`
+
+	path := writeTempConfig(t, config)
+	registry, err := LoadRegistry(path)
+	if err != nil {
+		t.Fatalf("load registry: %v", err)
+	}
+	contract, ok := registry.ContractFor("sms.realtime")
+	if !ok {
+		t.Fatal("expected sms.realtime contract")
+	}
+	if contract.DeliveryTracking.Mode != DeliveryTrackingModeOn {
+		t.Fatalf("expected deliveryTracking mode on, got %q", contract.DeliveryTracking.Mode)
+	}
+	if contract.DeliveryTracking.StaleAfterSeconds != 120 {
+		t.Fatalf("expected staleAfterSeconds 120, got %d", contract.DeliveryTracking.StaleAfterSeconds)
 	}
 }
 

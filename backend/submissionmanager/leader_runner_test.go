@@ -103,6 +103,18 @@ func waitForLeaderOnly(t *testing.T, runner *LeaderRunner) {
 	t.Fatalf("expected runner to become leader")
 }
 
+func waitForFollowerOnly(t *testing.T, runner *LeaderRunner) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if !runner.IsLeader() {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("expected runner to drop leadership")
+}
+
 func assertNoCallFor(t *testing.T, calls <-chan AttemptInput, wait time.Duration) {
 	t.Helper()
 	select {
@@ -236,6 +248,8 @@ func TestLeaderStopsOnLeaseLoss(t *testing.T) {
 	}
 
 	exec.Unblock()
+	waitForFollowerOnly(t, runner)
+	cancel()
 	assertNoCallFor(t, exec.calls, 500*time.Millisecond)
 }
 

@@ -54,6 +54,8 @@ At the domain level:
 
 History remains append-only in meaning: every accepted, correlated provider delivery signal contributes to the explanation of current delivery status, even when the current delivery status is already terminal.
 
+Terminal conflict handling is deterministic. The first observed terminal delivery status (`delivered` or `failed`) locks the current delivery status. Any later opposite terminal observation must remain visible in delivery history, but must not change the locked current delivery status.
+
 ## Invariants
 
 - Delivery status is independent from submission status and does not modify submission status.
@@ -63,6 +65,7 @@ History remains append-only in meaning: every accepted, correlated provider deli
 - Delivery status progression is independent from delivery freshness classification.
 - For intents with delivery tracking `off`, delivery status is not tracked and does not transition.
 - Correlation fallback behavior, ambiguity handling, and terminal conflict handling are internal deterministic semantics and are not public per-target config.
+- After terminal lock, opposite terminal observations are history-only and must not mutate current delivery status.
 
 ## Race Conditions and Handling
 
@@ -71,6 +74,8 @@ Provider delivery signals may arrive out of order, concurrently, or after long d
 Duplicate provider delivery signals must be treated as non-conflicting observations. They may enrich history but must not create contradictory current delivery status outcomes.
 
 Late signals must remain visible in history so observers can distinguish timely delivery observations from delayed ones.
+
+If opposite terminal observations race or arrive out of order, the model must still converge to one locked current terminal delivery status while preserving the opposite observation in delivery history.
 
 ## Failure Semantics
 
@@ -92,10 +97,7 @@ Concurrent duplicates must not lead to divergent current statuses.
 - Delivery status can be `unknown`, `in_progress`, `delivered`, or `failed`.
 - Observers can identify when a delivery terminal signal was late relative to submission terminalization.
 - A late `delivered` observation after submission `rejected` or `exhausted` keeps submission status unchanged while updating delivery history and current delivery status.
+- If both terminal outcomes are observed, the first terminal outcome remains the current delivery status and the opposite terminal observation remains visible in delivery history.
 - For a target with no `deliveryTracking` block, delivery tracking behaves as `mode=off`.
 - Intents with delivery tracking `off` do not transition through delivery statuses.
 - For intents with delivery tracking `off`, provider delivery signals are logged as ignored (`mode_off`) for audit and troubleshooting.
-
-## Requires DESIGN decision
-
-- Requires DESIGN decision: deterministic conflict-resolution rule when terminal delivery signals of different polarity (success and failure) are both observed for the same intent.

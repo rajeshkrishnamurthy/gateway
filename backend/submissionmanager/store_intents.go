@@ -40,6 +40,22 @@ func (s *sqlStore) insertIntent(ctx context.Context, intent Intent, payloadHash 
 		webhookStatus = webhookPending
 	}
 	now = now.UTC()
+	deliveryTrackingMode := strings.TrimSpace(string(intent.Contract.DeliveryTracking.Mode))
+	if deliveryTrackingMode == "" {
+		deliveryTrackingMode = string(submission.DeliveryTrackingModeOff)
+	}
+	deliveryTrackingStaleAfterSeconds := sql.NullInt32{}
+	switch submission.DeliveryTrackingMode(deliveryTrackingMode) {
+	case submission.DeliveryTrackingModeOn:
+		if intent.Contract.DeliveryTracking.StaleAfterSeconds <= 0 {
+			return Intent{}, false, errors.New("deliveryTracking.staleAfterSeconds must be greater than zero when mode=on")
+		}
+		deliveryTrackingStaleAfterSeconds = nullInt(intent.Contract.DeliveryTracking.StaleAfterSeconds)
+	case submission.DeliveryTrackingModeOff:
+		deliveryTrackingMode = string(submission.DeliveryTrackingModeOff)
+	default:
+		deliveryTrackingMode = string(submission.DeliveryTrackingModeOff)
+	}
 
 	_, err = s.db.ExecContext(
 		ctx,
@@ -53,6 +69,8 @@ func (s *sqlStore) insertIntent(ctx context.Context, intent Intent, payloadHash 
       policy,
       max_acceptance_seconds,
       max_attempts,
+      delivery_tracking_mode,
+      delivery_tracking_stale_after_seconds,
       terminal_outcomes,
       webhook_url,
       webhook_headers,
@@ -72,7 +90,7 @@ func (s *sqlStore) insertIntent(ctx context.Context, intent Intent, payloadHash 
       last_modified_at,
       next_attempt_at
     ) VALUES (
-      @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15, @p16, @p17, @p18, @p19, @p20, @p21, @p22, @p23, @p24, @p25, SYSUTCDATETIME(), @p26
+      @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15, @p16, @p17, @p18, @p19, @p20, @p21, @p22, @p23, @p24, @p25, @p26, @p27, SYSUTCDATETIME(), @p28
     )`,
 		intent.IntentID,
 		intent.SubmissionTarget,
@@ -83,6 +101,8 @@ func (s *sqlStore) insertIntent(ctx context.Context, intent Intent, payloadHash 
 		string(intent.Contract.Policy),
 		nullInt(intent.Contract.MaxAcceptanceSeconds),
 		nullInt(intent.Contract.MaxAttempts),
+		deliveryTrackingMode,
+		deliveryTrackingStaleAfterSeconds,
 		string(terminalOutcomes),
 		nullString(webhookURL),
 		nullString(string(webhookHeadersJSON)),
@@ -156,6 +176,8 @@ func (s *sqlStore) loadIntentForExecution(ctx context.Context, intentID string) 
       policy,
       max_acceptance_seconds,
       max_attempts,
+      delivery_tracking_mode,
+      delivery_tracking_stale_after_seconds,
       terminal_outcomes,
       webhook_url,
       webhook_headers,
@@ -200,6 +222,8 @@ func (s *sqlStore) loadIntentRow(ctx context.Context, intentID string) (Intent, 
       policy,
       max_acceptance_seconds,
       max_attempts,
+      delivery_tracking_mode,
+      delivery_tracking_stale_after_seconds,
       terminal_outcomes,
       webhook_url,
       webhook_headers,
@@ -234,6 +258,8 @@ func (s *sqlStore) scanIntentRow(row *sql.Row) (Intent, int, bool, error) {
 		policy                string
 		maxAcceptanceSeconds  sql.NullInt32
 		maxAttempts           sql.NullInt32
+		deliveryTrackingMode  string
+		deliveryTrackingStale sql.NullInt32
 		terminalOutcomesJSON  string
 		webhookURL            sql.NullString
 		webhookHeadersJSON    sql.NullString
@@ -262,6 +288,8 @@ func (s *sqlStore) scanIntentRow(row *sql.Row) (Intent, int, bool, error) {
 		&policy,
 		&maxAcceptanceSeconds,
 		&maxAttempts,
+		&deliveryTrackingMode,
+		&deliveryTrackingStale,
 		&terminalOutcomesJSON,
 		&webhookURL,
 		&webhookHeadersJSON,
@@ -327,6 +355,10 @@ func (s *sqlStore) scanIntentRow(row *sql.Row) (Intent, int, bool, error) {
 			MaxAttempts:          int(maxAttempts.Int32),
 			TerminalOutcomes:     terminalOutcomes,
 			Webhook:              webhook,
+			DeliveryTracking: submission.DeliveryTrackingConfig{
+				Mode:              submission.DeliveryTrackingMode(strings.TrimSpace(deliveryTrackingMode)),
+				StaleAfterSeconds: int(deliveryTrackingStale.Int32),
+			},
 		},
 		FinalOutcome: GatewayOutcome{
 			Status: finalOutcomeStatus.String,
@@ -335,6 +367,16 @@ func (s *sqlStore) scanIntentRow(row *sql.Row) (Intent, int, bool, error) {
 		ExhaustedReason: exhaustedReason.String,
 		WebhookStatus:   webhookStatus.String,
 		WebhookError:    webhookError.String,
+	}
+	switch intent.Contract.DeliveryTracking.Mode {
+	case submission.DeliveryTrackingModeOn:
+		if intent.Contract.DeliveryTracking.StaleAfterSeconds <= 0 {
+			intent.Contract.DeliveryTracking.Mode = submission.DeliveryTrackingModeOff
+			intent.Contract.DeliveryTracking.StaleAfterSeconds = 0
+		}
+	default:
+		intent.Contract.DeliveryTracking.Mode = submission.DeliveryTrackingModeOff
+		intent.Contract.DeliveryTracking.StaleAfterSeconds = 0
 	}
 	if webhookAttemptedAt.Valid {
 		intent.WebhookAttemptedAt = normalizeDBTime(webhookAttemptedAt.Time)

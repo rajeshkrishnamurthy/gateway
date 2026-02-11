@@ -17,5 +17,6 @@ This list captures follow-up ideas and open questions to consider in later phase
 - Routing evolution: Define registry reload behavior and its effect on in-flight intents while preserving contract snapshots. Code to examine: `backend/submission/registry.go`, `backend/submissionmanager/manager.go`.
 - Delivery tracking: Plan integration with a separate delivery-status system once acceptance is not the end state. Code to examine: none in this repo yet (new module expected).
 - Delivery tracking applicability: Decide whether delivery tracking is contract-driven per `submissionTarget`, and define behavior for intents where tracking is not applicable.
+- Delivery tracking durable queueing: Evaluate adding a SQL-backed inbox/worker path for eventual application of accepted provider delivery signals (retry, dead-letter, and claim/lease semantics); deferred from V1 by ADR `designs/adr/0001-delivery-tracking-durable-queueing.md`.
 - Multi-tenant isolation: Decide per-tenant limits and policy overrides, ensuring tenant identifiers flow consistently. Code to examine: `backend/sms_gateway.go`, `backend/push_gateway.go`, `backend/submissionmanager/manager.go`.
 - Testing strategy: Add end-to-end coverage once the HTTP surface exists, beyond unit tests. Code to examine: `backend/submissionmanager/manager_test.go`.

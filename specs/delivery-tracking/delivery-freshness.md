@@ -36,6 +36,14 @@ If the snapshot has no `deliveryTracking` block, behavior is `mode=off`.
 - `deliveryTracking.staleAfterSeconds` must be a positive integer.
 - If `mode=off` and `staleAfterSeconds` is present, the value is ignored and a configuration warning is logged.
 
+## Canonical Ordering for Freshness Decisions
+
+Freshness reclassification decisions must use one deterministic ordering key per accepted correlated provider delivery signal:
+
+- `K = (effectiveAt, receivedAt, stable unique identity of the accepted signal record)` with strict lexicographic compare.
+- `effectiveAt` must use provider-observed time when present and valid; otherwise it must use Setu `receivedAt`.
+- The third comparison component must be stable across retries/replays so equal timestamps still compare deterministically.
+
 ## Canonical Freshness States
 
 - `fresh`: delivery status is unresolved and still within expected observation conditions.
@@ -45,9 +53,12 @@ If the snapshot has no `deliveryTracking` block, behavior is `mode=off`.
 ## Freshness Reclassification Rules
 
 - `fresh` may transition to `stale` when unresolved delivery status exceeds expected observation conditions.
-- `stale` may transition back to `fresh` only when a newer valid non-terminal provider delivery signal is observed.
+- `fresh` to `stale` is a persisted evaluator-path transition. It must be applied by a time-driven evaluator and must not be inferred ad hoc only at read time.
+- `stale` may transition back to `fresh` only when a newer valid non-terminal provider delivery signal is observed in the signal-apply path.
 - When a newer valid terminal provider delivery signal is observed, freshness transitions to `not_applicable`.
 - Duplicate provider delivery signals or signals that are not considered newer must not reclassify `stale` to `fresh`.
+
+A provider delivery signal is a newer valid non-terminal signal only when all of the following are true: correlation result is `matched`, delivery tracking mode is `on`, the signal maps to `in_progress` delivery status, and its ordering key `K` is strictly greater than the last applied non-terminal key for that intent.
 
 ## Invariants
 
@@ -73,6 +84,8 @@ If freshness evaluation cannot run temporarily, the system must preserve last kn
 
 If expected observation conditions are unavailable, freshness must remain explicit and non-terminal, with no forced conversion to delivery failure.
 
+If the evaluator path is delayed or unavailable, `fresh` to `stale` transitions are delayed but the last persisted freshness remains authoritative until evaluator processing resumes.
+
 Invalid contract config (`mode` invalid, missing `staleAfterSeconds` for `mode=on`, or non-positive `staleAfterSeconds`) fails registry/config load.
 
 If `mode=off` includes `staleAfterSeconds`, runtime ignores the value and logs a configuration warning (non-fatal).
@@ -93,9 +106,3 @@ Concurrent duplicate provider delivery signals must not produce divergent freshn
 - For intents with delivery tracking `on`, staleness is evaluated using that target's `staleAfterSeconds`.
 - For `mode=off`, `staleAfterSeconds` (if present) is ignored and logged as configuration warning.
 - Intents with delivery tracking `off` do not apply freshness classification.
-
-## Requires DESIGN decision
-
-- Requires DESIGN decision: deterministic timestamp basis used with `staleAfterSeconds` for staleness evaluation.
-- Requires DESIGN decision: deterministic tie-break rule when candidate provider delivery signals have equal effective time.
-- Requires DESIGN decision: deterministic definition of "newer valid signal" for freshness reclassification.

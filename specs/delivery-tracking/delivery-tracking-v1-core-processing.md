@@ -22,7 +22,7 @@ Unless this slice explicitly adds constraints, invariants, race handling, failur
 
 ## Invariants
 
-Only `matched` signals are eligible for domain application at the core-processing boundary. Mode-off processing remains a no-op for delivery status and delivery freshness while preserving `mode_off` audit visibility. Delivery history remains append-only in meaning so current delivery status is derivable deterministically.
+Only `matched` signals are eligible for domain application at the core-processing boundary. Mode-off processing remains a no-op for delivery status and delivery freshness while preserving `mode_off` audit visibility. Delivery history remains append-only in meaning so current delivery status is derivable deterministically. For matched tracked intents, idempotent delivery-history write and any current delivery state mutation must be committed in one atomic unit.
 
 ## Race Conditions and Handling
 
@@ -30,7 +30,7 @@ Duplicated, out-of-order, and late provider delivery signals at the core-process
 
 ## Failure Semantics
 
-Core application is atomic: if a signal cannot be applied deterministically, partial mutation is not allowed and delivery status plus delivery freshness remain at last valid values. If freshness evaluation is unavailable at application time, last known freshness is preserved at the core boundary.
+Core application is atomic: if a signal cannot be applied deterministically, partial mutation is not allowed and delivery status plus delivery freshness remain at last valid values. Atomicity includes idempotent delivery-history write and current-state mutation in the same commit boundary, with no partial commit allowed between them. If freshness evaluation is unavailable at application time, last known freshness is preserved at the core boundary.
 
 ## Concurrency Guarantees
 
@@ -50,6 +50,4 @@ Criterion 5: late delivery success after terminal submission status is visible i
 
 Criterion 6: repeated processing under identical persisted inputs yields identical delivery status and delivery freshness.
 
-## Requires DESIGN decision
-
-This slice depends on unresolved deterministic conventions listed in `specs/delivery-tracking/delivery-status-model.md`, `specs/delivery-tracking/delivery-freshness.md`, and `specs/delivery-tracking/delivery-tracking-v1.md`.
+Criterion 7: for matched tracked intents, idempotent history persistence and current-state mutation are committed atomically with no partial commit boundary between them.

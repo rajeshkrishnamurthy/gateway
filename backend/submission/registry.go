@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/url"
 	"os"
 	"strings"
@@ -51,6 +52,23 @@ type TargetContract struct {
 	// further attempts.
 	TerminalOutcomes []string
 	Webhook          *WebhookConfig
+	DeliveryTracking DeliveryTrackingConfig
+}
+
+// DeliveryTrackingMode controls whether delivery tracking is active.
+type DeliveryTrackingMode string
+
+const (
+	// DeliveryTrackingModeOff disables delivery tracking for intents on a target.
+	DeliveryTrackingModeOff DeliveryTrackingMode = "off"
+	// DeliveryTrackingModeOn enables delivery tracking for intents on a target.
+	DeliveryTrackingModeOn DeliveryTrackingMode = "on"
+)
+
+// DeliveryTrackingConfig is the contract snapshot used by runtime delivery processing.
+type DeliveryTrackingConfig struct {
+	Mode              DeliveryTrackingMode
+	StaleAfterSeconds int
 }
 
 // Registry maps submissionTarget identifiers to validated TargetContracts.
@@ -65,14 +83,20 @@ type fileConfig struct {
 }
 
 type targetConfig struct {
-	SubmissionTarget     string         `json:"submissionTarget"`
-	GatewayType          string         `json:"gatewayType"`
-	GatewayURL           string         `json:"gatewayUrl"`
-	Policy               string         `json:"policy"`
-	MaxAcceptanceSeconds int            `json:"maxAcceptanceSeconds"`
-	MaxAttempts          int            `json:"maxAttempts"`
-	TerminalOutcomes     []string       `json:"terminalOutcomes"`
-	Webhook              *webhookConfig `json:"webhook"`
+	SubmissionTarget     string                  `json:"submissionTarget"`
+	GatewayType          string                  `json:"gatewayType"`
+	GatewayURL           string                  `json:"gatewayUrl"`
+	Policy               string                  `json:"policy"`
+	MaxAcceptanceSeconds int                     `json:"maxAcceptanceSeconds"`
+	MaxAttempts          int                     `json:"maxAttempts"`
+	TerminalOutcomes     []string                `json:"terminalOutcomes"`
+	Webhook              *webhookConfig          `json:"webhook"`
+	DeliveryTracking     *deliveryTrackingConfig `json:"deliveryTracking"`
+}
+
+type deliveryTrackingConfig struct {
+	Mode              string `json:"mode"`
+	StaleAfterSeconds *int   `json:"staleAfterSeconds"`
 }
 
 // WebhookConfig defines the terminal webhook callback for a submissionTarget.
@@ -277,6 +301,11 @@ func buildRegistry(cfg fileConfig) (Registry, error) {
 			return Registry{}, err
 		}
 
+		deliveryTracking, err := validateDeliveryTracking(target.DeliveryTracking, i)
+		if err != nil {
+			return Registry{}, err
+		}
+
 		registry.Targets[submissionTarget] = TargetContract{
 			SubmissionTarget:     submissionTarget,
 			GatewayType:          gatewayType,
@@ -286,6 +315,7 @@ func buildRegistry(cfg fileConfig) (Registry, error) {
 			MaxAttempts:          target.MaxAttempts,
 			TerminalOutcomes:     outcomes,
 			Webhook:              webhook,
+			DeliveryTracking:     deliveryTracking,
 		}
 	}
 
@@ -384,4 +414,32 @@ func normalizeHeaderMap(input map[string]string, field string) (map[string]strin
 		normalized[trimmedName] = trimmedValue
 	}
 	return normalized, nil
+}
+
+func validateDeliveryTracking(cfg *deliveryTrackingConfig, idx int) (DeliveryTrackingConfig, error) {
+	if cfg == nil {
+		return DeliveryTrackingConfig{Mode: DeliveryTrackingModeOff}, nil
+	}
+
+	mode := strings.TrimSpace(cfg.Mode)
+	switch mode {
+	case string(DeliveryTrackingModeOn):
+		if cfg.StaleAfterSeconds == nil {
+			return DeliveryTrackingConfig{}, fmt.Errorf("targets[%d].deliveryTracking.staleAfterSeconds is required when mode is on", idx)
+		}
+		if *cfg.StaleAfterSeconds <= 0 {
+			return DeliveryTrackingConfig{}, fmt.Errorf("targets[%d].deliveryTracking.staleAfterSeconds must be greater than zero when mode is on", idx)
+		}
+		return DeliveryTrackingConfig{
+			Mode:              DeliveryTrackingModeOn,
+			StaleAfterSeconds: *cfg.StaleAfterSeconds,
+		}, nil
+	case string(DeliveryTrackingModeOff):
+		if cfg.StaleAfterSeconds != nil {
+			log.Printf("submissionTarget targets[%d]: deliveryTracking.staleAfterSeconds ignored when mode=off", idx)
+		}
+		return DeliveryTrackingConfig{Mode: DeliveryTrackingModeOff}, nil
+	default:
+		return DeliveryTrackingConfig{}, fmt.Errorf("targets[%d].deliveryTracking.mode must be one of: on, off", idx)
+	}
 }
