@@ -138,12 +138,22 @@ services:
     volumes:
       - ./backend/conf/docker/haproxy_docker.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     depends_on:
-      - sms-gateway-1
-      - sms-gateway-2
-      - push-gateway-1
-      - push-gateway-2
-      - delivery-tracking-1
-      - delivery-tracking-2
+      sms-gateway-1:
+        condition: service_healthy
+      sms-gateway-2:
+        condition: service_healthy
+      push-gateway-1:
+        condition: service_healthy
+      push-gateway-2:
+        condition: service_healthy
+      delivery-tracking-1:
+        condition: service_healthy
+      delivery-tracking-2:
+        condition: service_healthy
+      submission-manager-1:
+        condition: service_healthy
+      submission-manager-2:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8404/stats"]
       interval: 5s
@@ -166,9 +176,16 @@ services:
       MSSQL_ENCRYPT: "disable"
       SM_HOLDER_ID: "sm-1"
     depends_on:
-      - mssql
-      - haproxy
-      - webhook-sink
+      mssql:
+        condition: service_healthy
+      webhook-sink:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8082/readyz"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
 
   submission-manager-2:
     <<: *go-service
@@ -185,9 +202,16 @@ services:
       MSSQL_ENCRYPT: "disable"
       SM_HOLDER_ID: "sm-2"
     depends_on:
-      - mssql
-      - haproxy
-      - webhook-sink
+      mssql:
+        condition: service_healthy
+      webhook-sink:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8082/readyz"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
 
   delivery-tracking-1:
     <<: *go-service
@@ -203,7 +227,14 @@ services:
       MSSQL_DATABASE: "setu"
       MSSQL_ENCRYPT: "disable"
     depends_on:
-      - mssql
+      mssql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8083/readyz"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
 
   delivery-tracking-2:
     <<: *go-service
@@ -219,7 +250,14 @@ services:
       MSSQL_DATABASE: "setu"
       MSSQL_ENCRYPT: "disable"
     depends_on:
-      - mssql
+      mssql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8083/readyz"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
 
   admin-portal:
     <<: *go-service
@@ -227,7 +265,8 @@ services:
     ports:
       - "8090:8090"
     depends_on:
-      - haproxy
+      haproxy:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8090/readyz"]
       interval: 5s

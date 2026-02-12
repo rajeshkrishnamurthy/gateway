@@ -73,7 +73,7 @@ Response JSON:
 Docker Compose (dev/testing):
 
 ```sh
-docker compose up -d
+docker compose up -d --wait --wait-timeout 180
 ```
 
 The compose service uses `conf/submission/submission_targets_docker.json` so the manager reaches HAProxy by service name.
@@ -262,7 +262,7 @@ Notes:
 For a cross-platform dev stack, use Docker Compose from the repo root:
 
 ```sh
-docker compose up
+docker compose up -d --wait --wait-timeout 180
 ```
 
 Then open:
