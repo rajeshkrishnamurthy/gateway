@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gateway/submissionmanager"
+	"gateway/submissionmanagerapi"
 )
 
 type apiServer struct {
@@ -36,6 +37,7 @@ func handleHealthz(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok"))
 }
@@ -54,9 +56,35 @@ func handleReadyz(statusFn func() submissionmanager.LeaseStatus) http.HandlerFun
 		if status.Mode == "leader" && !status.ExpiresAt.IsZero() {
 			body = fmt.Sprintf("%s lease_expires_at=%s", body, status.ExpiresAt.UTC().Format(time.RFC3339Nano))
 		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(body))
 	}
+}
+
+func handleOpenAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	payload, err := submissionmanagerapi.MarshalOpenAPIJSON()
+	if err != nil {
+		http.Error(w, "unable to generate openapi", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(payload)
+}
+
+func handleDocs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(submissionmanagerapi.SwaggerUIHTML(submissionmanagerapi.OpenAPIPath)))
 }
 
 func (s *apiServer) handleSubmit(w http.ResponseWriter, r *http.Request) {

@@ -5,8 +5,11 @@ This directory contains canonical, as-is specifications for backend behavior. Th
 ## Index
 
 - `submission-tracking/submission-manager.md` - SubmissionIntent, submissionTarget contracts, and SubmissionManager semantics.
+- `submission-tracking/ubiquitous-language.md` - Canonical terminology for submission-tracking specs.
 - `submission-tracking/submission-manager-metrics.md` - Prometheus metrics for SubmissionManager.
 - `submission-tracking/submission-manager-webhooks.md` - Terminal status webhook callbacks for SubmissionManager.
+- `submission-tracking/submission-manager-swagger-compatibility.md` - Swagger/OpenAPI compatibility contract for the SubmissionManager bounded context.
+- `submission-tracking/submission-manager-openapi.yaml` - Canonical OpenAPI 3.0 contract artifact for SubmissionManager routes.
 - `manager-sync-timeout.md` - Sync wait behavior for POST /v1/intents.
 - `capabilities.md` - High-level implemented capability list.
 - `vision.md` - Setu vision, goals, and scope.
