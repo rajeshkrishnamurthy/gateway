@@ -21,6 +21,7 @@ import (
 
 	"gateway/submission"
 	"gateway/submissionmanager"
+	"gateway/submissionmanagerapi"
 )
 
 type stubExecutor struct{}
@@ -336,6 +337,58 @@ func TestHandleHealthzAndReadyz(t *testing.T) {
 	handleReadyz(nil).ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+}
+
+func TestHandleOpenAPIAndDocs(t *testing.T) {
+	mux := newMux(&apiServer{}, nil, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, submissionmanagerapi.OpenAPIPath, nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
+		t.Fatalf("expected application/json content type, got %q", got)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode openapi json: %v", err)
+	}
+	openapi, _ := payload["openapi"].(string)
+	if !strings.HasPrefix(openapi, "3.0.") {
+		t.Fatalf("expected openapi 3.0.x, got %q", openapi)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, submissionmanagerapi.OpenAPIPath, nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rr.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, submissionmanagerapi.DocsPath, nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+		t.Fatalf("expected text/html content type, got %q", got)
+	}
+	if !strings.Contains(rr.Body.String(), submissionmanagerapi.OpenAPIPath) {
+		t.Fatalf("docs html must reference %q, got %q", submissionmanagerapi.OpenAPIPath, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "SwaggerUIBundle") {
+		t.Fatalf("docs html must include Swagger UI bootstrap")
+	}
+
+	req = httptest.NewRequest(http.MethodPost, submissionmanagerapi.DocsPath, nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rr.Code)
 	}
 }
 

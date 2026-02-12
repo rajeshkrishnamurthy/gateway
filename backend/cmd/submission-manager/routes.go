@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"gateway/submissionmanager"
+	"gateway/submissionmanagerapi"
 )
 
 func newMux(server *apiServer, ui *managerUIServer, metrics *submissionmanager.Metrics, statusFn func() submissionmanager.LeaseStatus) *http.ServeMux {
@@ -11,6 +12,8 @@ func newMux(server *apiServer, ui *managerUIServer, metrics *submissionmanager.M
 	mux.HandleFunc("/healthz", handleHealthz)
 	mux.HandleFunc("/readyz", handleReadyz(statusFn))
 	mux.Handle("/metrics", handleMetrics(metrics))
+	mux.HandleFunc(submissionmanagerapi.OpenAPIPath, handleOpenAPI)
+	mux.HandleFunc(submissionmanagerapi.DocsPath, handleDocs)
 	mux.HandleFunc("/v1/intents", server.handleSubmit)
 	mux.HandleFunc("/v1/intents/", server.handleGet)
 	if ui != nil {
