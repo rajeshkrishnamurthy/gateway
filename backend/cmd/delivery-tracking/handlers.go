@@ -148,10 +148,6 @@ func (s *apiServer) handleDeliveryWebhookIngestion(w http.ResponseWriter, r *htt
 		CorrelationResult:  correlationResult,
 	})
 	if err != nil {
-		stage := deliverytracking.ProcessingStageCoreProcessing
-		reason := deliverytracking.MapProcessingFailureReason(err)
-		s.observeProcessingFailure(stage, reason)
-		s.logDeliveryProcessingFailure(stage, reason, result.IntentID, "/v1/delivery/provider-signal-webhook", string(correlationResult))
 		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "service unavailable", nil)
 		return
 	}
