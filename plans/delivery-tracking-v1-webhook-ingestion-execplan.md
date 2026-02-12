@@ -22,6 +22,7 @@ A novice can verify this by posting one `in_progress` webhook for an existing in
 - [x] (2026-02-11 17:20Z) Updated schema contract in `backend/conf/sql/submissionmanager/001_create_schema.sql` to remove creation of persisted correlation-handoff table for new databases.
 - [x] (2026-02-11 17:26Z) Updated ingestion and runtime tests for new boundary semantics and added end-to-end webhook->read visibility coverage.
 - [x] (2026-02-11 17:31Z) Ran package tests (`go test ./deliverytracking ./cmd/delivery-tracking` and `go test ./...`) and captured passing evidence.
+- [x] (2026-02-11 18:00Z) Fixed duplicate `core_processing` failure accounting by removing handler-level metric/log emission for downstream apply errors and relying on processor-level failure accounting.
 
 ## Surprises & Discoveries
 
@@ -30,6 +31,9 @@ A novice can verify this by posting one `in_progress` webhook for an existing in
 
 - Observation: The previous webhook runtime tests asserted `correlation_handoff` stage metrics and no-ingress rollback semantics on downstream failures, which no longer matched the two-boundary model.
   Evidence: `backend/cmd/delivery-tracking/main_test.go` pre-change `TestDeliveryRuntimeWebhookTransientFailureMappedTo503AndNoPartialCommit` dropped `intent_delivery_correlation_handoff` and expected zero ingress rows.
+
+- Observation: Downstream apply failures were counted twice because both handler and processor emitted `core_processing` failure metrics/logs on the same error.
+  Evidence: `backend/cmd/delivery-tracking/handlers.go` (apply error path) and `backend/deliverytracking/processor.go` deferred error handler both called `ObserveProcessingFailure`/failure log paths.
 
 ## Decision Log
 
@@ -45,6 +49,10 @@ A novice can verify this by posting one `in_progress` webhook for an existing in
   Rationale: V1 now has no persisted handoff stage; new environments should not create an unused handoff artifact.
   Date/Author: 2026-02-11 / Codex
 
+- Decision: Keep `core_processing` failure accounting single-sourced in processor apply path; remove duplicate handler-side accounting on `ApplyCorrelatedDeliveryRecord` errors.
+  Rationale: Prevents double-counted `delivery_processing_failures_total` and duplicate failure logs for one downstream error event.
+  Date/Author: 2026-02-11 / Codex
+
 ## Outcomes & Retrospective
 
 Implemented outcomes:
@@ -52,6 +60,7 @@ Implemented outcomes:
 - Webhook ingestion now owns only Boundary A persistence in `backend/deliverytracking/webhook_ingestion.go`.
 - Runtime now synchronously executes correlation plus core apply after successful ingress commit in `backend/cmd/delivery-tracking/handlers.go`.
 - Downstream processing failures now return `503` while preserving ingress-audit rows.
+- Downstream apply failures now increment `core_processing` failure metrics exactly once per failing request path.
 - Unmatched `intentId` webhook requests are accepted (`202`), persisted as ingress evidence, and remain no-op for delivery state/history mutation.
 - End-to-end contract closure is now demonstrated in tests: accepted webhook input updates canonical read API outcomes.
 
@@ -155,3 +164,4 @@ Key interfaces after this implementation:
 ---
 
 Revision note (2026-02-11 / Codex): Rewrote this execplan to match the approved two-boundary webhook design and to capture implementation evidence for synchronous contract closure from webhook ingress to canonical read behavior.
+Revision note (2026-02-11 / Codex): Updated plan after fixing duplicate `core_processing` failure accounting between webhook handler and processor apply path.
