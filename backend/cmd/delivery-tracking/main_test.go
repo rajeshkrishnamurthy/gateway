@@ -74,12 +74,98 @@ func TestDeliveryRuntimeWebhookMalformedObservedAtFallbackAccepted(t *testing.T)
 	}
 }
 
-func TestDeliveryRuntimeWebhookTransientFailureMappedTo503AndNoPartialCommit(t *testing.T) {
+func TestDeliveryRuntimeWebhookAcceptedAppliesCoreAndReadVisibility(t *testing.T) {
+	server, db := newTestServer(t)
+	mux := newMux(server)
+	now := time.Now().UTC()
+	insertIntent(t, db, "intent-webhook-e2e", submission.DeliveryTrackingModeOn, 300, now.Add(-time.Hour))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/delivery/provider-signal-webhook", strings.NewReader(`{
+  "intentId":"intent-webhook-e2e",
+  "providerDeliverySignal":"in_progress",
+  "providerEventId":"evt-webhook-e2e"
+}`))
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d body=%q", rr.Code, rr.Body.String())
+	}
+
+	if countWebhookIngestionRows(t, db, "intent-webhook-e2e") != 1 {
+		t.Fatalf("expected one persisted ingress-audit row")
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/intents/intent-webhook-e2e/delivery", nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for current delivery, got %d body=%q", rr.Code, rr.Body.String())
+	}
+	var current deliveryCurrentResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &current); err != nil {
+		t.Fatalf("decode current response: %v", err)
+	}
+	if current.DeliveryTrackingMode != string(submission.DeliveryTrackingModeOn) {
+		t.Fatalf("expected mode on, got %q", current.DeliveryTrackingMode)
+	}
+	if current.DeliveryStatus != string(deliverytracking.DeliveryStatusInProgress) {
+		t.Fatalf("expected deliveryStatus in_progress, got %q", current.DeliveryStatus)
+	}
+	if current.DeliveryFreshness != string(deliverytracking.DeliveryFreshnessFresh) {
+		t.Fatalf("expected deliveryFreshness fresh, got %q", current.DeliveryFreshness)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/intents/intent-webhook-e2e/delivery/history", nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for delivery history, got %d body=%q", rr.Code, rr.Body.String())
+	}
+	var history deliveryHistoryResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &history); err != nil {
+		t.Fatalf("decode history response: %v", err)
+	}
+	if len(history.Entries) != 1 {
+		t.Fatalf("expected one history entry, got %d", len(history.Entries))
+	}
+	if history.Entries[0].ProviderDeliverySignal != string(deliverytracking.DeliverySignalInProgress) {
+		t.Fatalf("expected history signal in_progress, got %q", history.Entries[0].ProviderDeliverySignal)
+	}
+}
+
+func TestDeliveryRuntimeWebhookUnmatchedIntentAcceptedAsNoOp(t *testing.T) {
 	server, db := newTestServer(t)
 	mux := newMux(server)
 
-	if _, err := db.ExecContext(context.Background(), `DROP TABLE dbo.intent_delivery_correlation_handoff`); err != nil {
-		t.Fatalf("drop handoff table: %v", err)
+	req := httptest.NewRequest(http.MethodPost, "/v1/delivery/provider-signal-webhook", strings.NewReader(`{
+  "intentId":"intent-unmatched-webhook",
+  "providerDeliverySignal":"terminal_success"
+}`))
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 for unmatched signal, got %d body=%q", rr.Code, rr.Body.String())
+	}
+
+	if countWebhookIngestionRows(t, db, "intent-unmatched-webhook") != 1 {
+		t.Fatalf("expected ingress-audit row for unmatched signal")
+	}
+	snapshot := loadDeliveryReadSnapshot(t, db, "intent-unmatched-webhook")
+	if snapshot.stateCount != 0 {
+		t.Fatalf("expected unmatched signal to keep state rows at 0, got %d", snapshot.stateCount)
+	}
+	if snapshot.historyCount != 0 {
+		t.Fatalf("expected unmatched signal to keep history rows at 0, got %d", snapshot.historyCount)
+	}
+}
+
+func TestDeliveryRuntimeWebhookTransientFailureMappedTo503AndIngressAuditPersists(t *testing.T) {
+	server, db := newTestServer(t)
+	mux := newMux(server)
+	insertIntent(t, db, "intent-503", submission.DeliveryTrackingModeOn, 300, time.Now().UTC().Add(-time.Hour))
+
+	if _, err := db.ExecContext(context.Background(), `DROP TABLE dbo.intent_delivery_history`); err != nil {
+		t.Fatalf("drop history table: %v", err)
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/delivery/provider-signal-webhook", strings.NewReader(`{
@@ -99,14 +185,14 @@ func TestDeliveryRuntimeWebhookTransientFailureMappedTo503AndNoPartialCommit(t *
 	if resp.Error.Code != "service_unavailable" {
 		t.Fatalf("expected service_unavailable code, got %q", resp.Error.Code)
 	}
-	if countWebhookIngestionRows(t, db, "intent-503") != 0 {
-		t.Fatalf("expected no partial ingestion rows")
+	if countWebhookIngestionRows(t, db, "intent-503") != 1 {
+		t.Fatalf("expected ingress-audit record to remain persisted after downstream failure")
 	}
 
 	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	metricsRR := httptest.NewRecorder()
 	mux.ServeHTTP(metricsRR, metricsReq)
-	assertContainsRuntimeMetric(t, metricsRR.Body.String(), `delivery_processing_failures_total{stage="correlation_handoff",reason="storage_unavailable"} 1`)
+	assertContainsRuntimeMetric(t, metricsRR.Body.String(), `delivery_processing_failures_total{stage="core_processing",reason="storage_unavailable"} 1`)
 }
 
 func TestDeliveryRuntimeMetricsEndpointExposesDeliveryMetrics(t *testing.T) {
@@ -527,8 +613,13 @@ func newServerFromDB(t *testing.T, db *sql.DB) *apiServer {
 		t.Fatalf("new delivery reader: %v", err)
 	}
 	metrics := deliverytracking.NewMetrics(db)
+	processor, err := deliverytracking.NewProcessorWithMetrics(db, metrics)
+	if err != nil {
+		t.Fatalf("new delivery processor: %v", err)
+	}
 	return &apiServer{
 		webhookIngestor: ingestor,
+		processor:       processor,
 		reader:          reader,
 		metrics:         metrics,
 	}

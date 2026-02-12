@@ -61,9 +61,14 @@ func main() {
 		log.Fatalf("construct delivery reader: %v", err)
 	}
 	metrics := deliverytracking.NewMetrics(db)
+	processor, err := deliverytracking.NewProcessorWithMetrics(db, metrics)
+	if err != nil {
+		log.Fatalf("construct delivery processor: %v", err)
+	}
 
 	server := &apiServer{
 		webhookIngestor: webhookIngestor,
+		processor:       processor,
 		reader:          reader,
 		metrics:         metrics,
 	}

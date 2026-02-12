@@ -23,7 +23,11 @@ Correlation is a mandatory gate before delivery status and delivery freshness pr
 
 ## Contract Gating
 
-Correlation is applied only for intents whose resolved `submissionTarget` contract snapshot has `deliveryTracking.mode` set to `on`. If delivery tracking is `off`, provider delivery signals are not correlated for that intent.
+For intents whose resolved `submissionTarget` contract snapshot has `deliveryTracking.mode` set to `on`, correlation behavior must follow this spec.
+
+Mode-off (`deliveryTracking.mode=off`) correlation-path classification behavior is deferred for a dedicated SPEC pass and tracked in `specs/spec_backlog.md` item 3.
+
+Until that SPEC work is complete, this document does not impose a normative `matched`/`unmatched`/`invalid` classification requirement for mode-off intents. Regardless of classification, mode-off intents must not mutate delivery status or delivery freshness.
 
 ## Canonical Correlation Key
 
@@ -32,6 +36,8 @@ The canonical correlation key is `intentId`.
 Correlation uses exact `intentId` matching against existing intents. This key is deterministic and unique by intent contract.
 
 ## Correlation Results
+
+The following result definitions are normative for signals correlated against intents where `deliveryTracking.mode=on`.
 
 - `matched`: the signal contains a valid `intentId` and exactly one intent exists for that key.
 - `unmatched`: the signal contains a valid `intentId` but no intent exists for that key.
@@ -44,6 +50,7 @@ By contract, ambiguous result is not expected because correlation uses a single 
 - Correlation is deterministic: the same signal key against the same intent set yields the same correlation result.
 - Delivery status and delivery freshness changes are allowed only for `matched` signals.
 - `unmatched` and `invalid` signals must not mutate delivery status, delivery freshness, or submission status.
+- This spec defines correlation-result behavior only for intents with `deliveryTracking.mode=on`; mode-off classification behavior is intentionally deferred to a later SPEC slice.
 - Correlation behavior is internal deterministic semantics and is not public per-target config.
 - Correlation never changes submission status.
 
@@ -71,8 +78,8 @@ No signal may be correlated to more than one intent.
 
 ## Observable Acceptance Criteria
 
-- A signal with valid `intentId` matching an existing intent is classified `matched` and is eligible for downstream delivery status and delivery freshness processing.
-- A signal with valid `intentId` that does not match any intent is classified `unmatched` and does not change delivery status or delivery freshness.
+- For intents whose contract snapshot has `deliveryTracking.mode=on`, a signal with valid `intentId` matching an existing intent is classified `matched` and is eligible for downstream delivery status and delivery freshness processing.
+- For intents whose contract snapshot has `deliveryTracking.mode=on`, a signal with valid `intentId` that does not match any intent is classified `unmatched` and does not change delivery status or delivery freshness.
 - A signal without a valid canonical key is classified `invalid` and does not change delivery status or delivery freshness.
 - Repeated signals with the same valid key do not produce different intent associations.
 - Correlation processing never changes submission status.
