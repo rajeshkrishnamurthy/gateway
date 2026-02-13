@@ -20,6 +20,7 @@ Codex may propose alternatives and highlight risks, but **final decisions belong
 ## Inputs
 
 * Existing specs in `specs/`
+* Cross-cutting logging contract: `specs/logging-standard.md` (mandatory reference when writing or revising backend logging semantics)
 * Operational context from README/docs as needed
 * Prior accepted behavior in `main` (if relevant)
 

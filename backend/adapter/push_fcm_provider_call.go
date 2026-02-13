@@ -8,7 +8,6 @@ import (
 	"gateway"
 	"gateway/pii"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -77,9 +76,10 @@ func PushFCMProviderCallWithTokenSource(providerURL string, tokenSource func(con
 		Transport: transport,
 	}
 	return func(ctx context.Context, req gateway.PushRequest) (gateway.ProviderResult, error) {
+		logger := providerLogger(PushFCMProviderName, req.ReferenceID)
 		token, err := tokenSource(ctx)
 		if err != nil {
-			log.Printf("push provider error referenceId=%q provider=%q error=%v", req.ReferenceID, PushFCMProviderName, err)
+			logger.Error("push provider token source failed", "event", "provider.auth.token_failed", "outcome", "error", "error", err)
 			return gateway.ProviderResult{}, err
 		}
 
@@ -105,37 +105,37 @@ func PushFCMProviderCallWithTokenSource(providerURL string, tokenSource func(con
 		}
 		body, err := json.Marshal(requestBody)
 		if err != nil {
-			log.Printf("push provider error referenceId=%q provider=%q error=%v", req.ReferenceID, PushFCMProviderName, err)
+			logger.Error("push provider request marshal failed", "event", "provider.request.encode_failed", "outcome", "error", "error", err)
 			return gateway.ProviderResult{}, err
 		}
 
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, providerURL, bytes.NewReader(body))
 		if err != nil {
-			log.Printf("push provider error referenceId=%q provider=%q error=%v", req.ReferenceID, PushFCMProviderName, err)
+			logger.Error("push provider request build failed", "event", "provider.request.build_failed", "outcome", "error", "error", err)
 			return gateway.ProviderResult{}, err
 		}
 		httpReq.Header.Set("Content-Type", "application/json")
 		httpReq.Header.Set("Authorization", "Bearer "+token)
 
-		log.Printf(
-			"push provider request referenceId=%q provider=%q url=%q tokenMasked=%q messageLen=%d messageHash=%q",
-			req.ReferenceID,
-			PushFCMProviderName,
-			providerURL,
-			tokenMasked,
-			messageLen,
-			messageHash,
+		logger.Info(
+			"push provider request",
+			"event", "provider.request",
+			"outcome", "attempt",
+			"url", providerURL,
+			"tokenMasked", tokenMasked,
+			"messageLen", messageLen,
+			"messageHash", messageHash,
 		)
 		resp, err := client.Do(httpReq)
 		if err != nil {
-			log.Printf("push provider error referenceId=%q provider=%q error=%v", req.ReferenceID, PushFCMProviderName, err)
+			logger.Error("push provider request failed", "event", "provider.request.failed", "outcome", "error", "error", err)
 			return gateway.ProviderResult{}, err
 		}
 		defer resp.Body.Close()
 
-		log.Printf("push provider response referenceId=%q provider=%q status=%d", req.ReferenceID, PushFCMProviderName, resp.StatusCode)
+		logger.Info("push provider response", "event", "provider.response", "outcome", "http_response", "status", resp.StatusCode)
 		if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
-			log.Printf("push provider decision referenceId=%q provider=%q mapped=accepted", req.ReferenceID, PushFCMProviderName)
+			logger.Info("push provider decision", "event", "provider.decision", "outcome", "accepted", "mapped", "accepted", "status", resp.StatusCode)
 			return gateway.ProviderResult{Status: "accepted"}, nil
 		}
 		errorBody := readLimitedBody(resp, fcmDebugMaxBytes)
@@ -145,17 +145,17 @@ func PushFCMProviderCallWithTokenSource(providerURL string, tokenSource func(con
 		// FCM signals stale/invalid device tokens as UNREGISTERED; surface a stable rejection reason so clients can drop the token.
 		if isFCMUnregistered(errorBody) {
 			if errorBody != "" && isFCMDebugEnabled() {
-				log.Printf("push provider error body referenceId=%q provider=%q status=%d body=%q", req.ReferenceID, PushFCMProviderName, resp.StatusCode, errorBody)
+				logger.Warn("push provider error body", "event", "provider.response.error_body", "outcome", "debug", "status", resp.StatusCode, "body", errorBody)
 			}
-			log.Printf("push provider decision referenceId=%q provider=%q status=%d mapped=unregistered_token", req.ReferenceID, PushFCMProviderName, resp.StatusCode)
+			logger.Info("push provider decision", "event", "provider.decision", "outcome", "rejected", "status", resp.StatusCode, "mapped", "unregistered_token")
 			return gateway.ProviderResult{Status: "rejected", Reason: "unregistered_token"}, nil
 		}
 		if isFCMDebugEnabled() {
 			if errorBody != "" {
-				log.Printf("push provider error body referenceId=%q provider=%q status=%d body=%q", req.ReferenceID, PushFCMProviderName, resp.StatusCode, errorBody)
+				logger.Warn("push provider error body", "event", "provider.response.error_body", "outcome", "debug", "status", resp.StatusCode, "body", errorBody)
 			}
 		}
-		log.Printf("push provider decision referenceId=%q provider=%q status=%d mapped=provider_failure", req.ReferenceID, PushFCMProviderName, resp.StatusCode)
+		logger.Info("push provider decision", "event", "provider.decision", "outcome", "provider_failure", "status", resp.StatusCode, "mapped", "provider_failure")
 		return gateway.ProviderResult{}, errors.New("provider non-2xx response")
 	}
 }

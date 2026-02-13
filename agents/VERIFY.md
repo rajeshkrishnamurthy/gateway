@@ -19,6 +19,7 @@ It is not a mode for new requirements, design changes, or implementation explora
 * execplan: `plans/<feature>-execplan.md` (living document as produced by EXEC under `backend/PLANS.md`)
 * Implementation + tests produced by EXEC
 * Repo-level Go discipline from `AGENTS.md` (boring, obvious, idiomatic Go; reviewer alignment) 
+* Cross-cutting logging contract: `specs/logging-standard.md` (mandatory when validating backend logging or log-parsing behavior)
 
 ## Outputs
 
@@ -40,6 +41,7 @@ VERIFY treats existing tests as a baseline and looks for gaps relative to the sp
 
 * Run the full test suite and any execplan-specified validation commands.
 * Map each spec invariant/failure mode/race-handling rule to one or more tests or observations.
+* For logging/parsing changes, map verification checks to `specs/logging-standard.md` schema, safety, and compatibility criteria.
 * Add verification tests that are:
 
   * adversarial (try to break guarantees),

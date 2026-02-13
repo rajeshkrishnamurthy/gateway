@@ -3,8 +3,9 @@ package gateway
 import (
 	"context"
 	"errors"
+	setulog "gateway/logging"
 	"gateway/metrics"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -123,7 +124,16 @@ func (g *PushGateway) SendPush(ctx context.Context, req PushRequest) (PushRespon
 		defer func() {
 			if r := recover(); r != nil {
 				panicRecovered = true
-				log.Printf("push provider panic referenceId=%q panic=%v", req.ReferenceID, r)
+				slog.Default().With(
+					"component", "push-gateway-core",
+					"commProfile", setulog.CommProfileOutsideToSetu,
+					"boundaryDirection", setulog.BoundaryDirectionEgress,
+					"peerSystem", "provider",
+					"operation", "provider_call",
+					"event", "gateway.provider.panic_recovered",
+					"outcome", "provider_failure",
+					"referenceId", req.ReferenceID,
+				).Error("push provider panic recovered", "panic", r)
 				err = errors.New("provider panic")
 			}
 		}()

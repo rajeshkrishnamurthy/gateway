@@ -13,6 +13,7 @@ This directory contains canonical, as-is specifications for backend behavior. Th
 - `manager-sync-timeout.md` - Sync wait behavior for POST /v1/intents.
 - `capabilities.md` - High-level implemented capability list.
 - `vision.md` - Setu vision, goals, and scope.
+- `logging-standard.md` - Cross-cutting logging contract for evidence, troubleshooting, and data safety.
 - `gateway-contracts.md` - SMS and push gateway contracts, HTTP endpoints, and submission-only behavior.
 - `gateway-metrics.md` - Prometheus metrics emitted by gateways and their meanings.
 - `gateway-configs.md` - Gateway config file schemas and validation rules.

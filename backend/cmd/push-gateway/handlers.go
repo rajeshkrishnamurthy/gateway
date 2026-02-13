@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"gateway"
+	setulog "gateway/logging"
 	"gateway/metrics"
 	"html/template"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -54,13 +55,30 @@ func handleReadyz(w http.ResponseWriter, r *http.Request) {
 
 func handlePushSend(gw *gateway.PushGateway, metricsRegistry *metrics.Registry, sendResult *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		logger := slog.Default().With(
+			"component", "push-gateway-http",
+			"commProfile", setulog.CommProfileOutsideToSetu,
+			"boundaryDirection", setulog.BoundaryDirectionIngress,
+			"peerSystem", "client",
+			"operation", "push_send",
+		)
 		start := time.Now()
 		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 
 		dec := json.NewDecoder(r.Body)
 		var req gateway.PushRequest
 		if err := dec.Decode(&req); err != nil {
-			log.Printf("push decision referenceId=%q status=rejected reason=invalid_request source=validation detail=decode_error err=%v", "", err)
+			logger.Warn(
+				"push decision",
+				"event", "gateway.decision",
+				"outcome", "rejected",
+				"referenceId", "",
+				"status", "rejected",
+				"reason", "invalid_request",
+				"source", "validation",
+				"detail", "decode_error",
+				"error", err,
+			)
 			writePushSendResponse(w, r, http.StatusOK, gateway.PushResponse{
 				Status: "rejected",
 				Reason: "invalid_request",
@@ -71,7 +89,16 @@ func handlePushSend(gw *gateway.PushGateway, metricsRegistry *metrics.Registry, 
 			return
 		}
 		if err := dec.Decode(&struct{}{}); err != io.EOF {
-			log.Printf("push decision referenceId=%q status=rejected reason=invalid_request source=validation detail=trailing_json", req.ReferenceID)
+			logger.Warn(
+				"push decision",
+				"event", "gateway.decision",
+				"outcome", "rejected",
+				"referenceId", req.ReferenceID,
+				"status", "rejected",
+				"reason", "invalid_request",
+				"source", "validation",
+				"detail", "trailing_json",
+			)
 			writePushSendResponse(w, r, http.StatusOK, gateway.PushResponse{
 				Status: "rejected",
 				Reason: "invalid_request",
@@ -89,13 +116,15 @@ func handlePushSend(gw *gateway.PushGateway, metricsRegistry *metrics.Registry, 
 		} else if resp.Reason == "provider_failure" {
 			source = "provider_failure"
 		}
-		log.Printf(
-			"push decision referenceId=%q status=%q reason=%q source=%s gatewayMessageId=%q",
-			resp.ReferenceID,
-			resp.Status,
-			resp.Reason,
-			source,
-			resp.GatewayMessageID,
+		logger.Info(
+			"push decision",
+			"event", "gateway.decision",
+			"outcome", resp.Status,
+			"referenceId", resp.ReferenceID,
+			"status", resp.Status,
+			"reason", resp.Reason,
+			"source", source,
+			"gatewayMessageId", resp.GatewayMessageID,
 		)
 		writePushSendResponse(w, r, http.StatusOK, resp, sendResult)
 		if metricsRegistry != nil {
@@ -119,7 +148,13 @@ func writePushResponse(w http.ResponseWriter, status int, resp gateway.PushRespo
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		log.Printf("encode response: %v", err)
+		slog.Default().With(
+			"component", "push-gateway-http",
+			"commProfile", setulog.CommProfileWithinSetu,
+			"operation", "http_response_write",
+			"stage", "encode_json",
+			"outcome", "failed",
+		).Error("encode response failed", "event", "gateway.response.encode_failed", "error", err)
 	}
 }
 
@@ -138,14 +173,26 @@ func writePushSendResponse(w http.ResponseWriter, r *http.Request, status int, r
 func writePushResponseFragment(w http.ResponseWriter, status int, resp gateway.PushResponse, tmpl *template.Template) {
 	fragment, err := executeTemplate(tmpl, "send_result.tmpl", resp)
 	if err != nil {
-		log.Printf("render send result: %v", err)
+		slog.Default().With(
+			"component", "push-gateway-http",
+			"commProfile", setulog.CommProfileWithinSetu,
+			"operation", "html_fragment_render",
+			"stage", "template_execute",
+			"outcome", "failed",
+		).Error("render send result failed", "event", "gateway.fragment.render_failed", "error", err)
 		http.Error(w, "render error", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if _, err := w.Write(fragment); err != nil {
-		log.Printf("write send result: %v", err)
+		slog.Default().With(
+			"component", "push-gateway-http",
+			"commProfile", setulog.CommProfileWithinSetu,
+			"operation", "html_fragment_write",
+			"stage", "response_write",
+			"outcome", "failed",
+		).Error("write send result failed", "event", "gateway.fragment.write_failed", "error", err)
 	}
 }
 

@@ -8,7 +8,6 @@ import (
 	"gateway"
 	"gateway/pii"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"time"
@@ -48,6 +47,7 @@ func DefaultProviderCall(providerURL string, connectTimeout time.Duration) gatew
 		recipientMasked := maskRecipient(req.To)
 		messageLen := len(req.Message)
 		messageHash := pii.Hash(req.Message)
+		logger := providerLogger(DefaultProviderName, req.ReferenceID)
 
 		payload := providerRequest{
 			ReferenceID: req.ReferenceID,
@@ -57,59 +57,60 @@ func DefaultProviderCall(providerURL string, connectTimeout time.Duration) gatew
 		}
 		body, err := json.Marshal(payload)
 		if err != nil {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, DefaultProviderName, err)
+			logger.Error("sms provider request marshal failed", "event", "provider.request.encode_failed", "outcome", "error", "error", err)
 			return gateway.ProviderResult{}, err
 		}
 
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, providerURL, bytes.NewReader(body))
 		if err != nil {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, DefaultProviderName, err)
+			logger.Error("sms provider request build failed", "event", "provider.request.build_failed", "outcome", "error", "error", err)
 			return gateway.ProviderResult{}, err
 		}
 		httpReq.Header.Set("Content-Type", "application/json")
 
-		log.Printf(
-			"sms provider request referenceId=%q provider=%q url=%q recipientMasked=%q messageLen=%d messageHash=%q",
-			req.ReferenceID,
-			DefaultProviderName,
-			providerURL,
-			recipientMasked,
-			messageLen,
-			messageHash,
+		logger.Info(
+			"sms provider request",
+			"event", "provider.request",
+			"outcome", "attempt",
+			"url", providerURL,
+			"recipientMasked", recipientMasked,
+			"messageLen", messageLen,
+			"messageHash", messageHash,
 		)
 		resp, err := client.Do(httpReq)
 		if err != nil {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, DefaultProviderName, err)
+			logger.Error("sms provider request failed", "event", "provider.request.failed", "outcome", "error", "error", err)
 			return gateway.ProviderResult{}, err
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			log.Printf("sms provider error referenceId=%q provider=%q status=%d", req.ReferenceID, DefaultProviderName, resp.StatusCode)
+			logger.Error("sms provider non-200 response", "event", "provider.response.invalid_status", "outcome", "provider_failure", "status", resp.StatusCode)
 			return gateway.ProviderResult{}, errors.New("provider non-200 response")
 		}
 
 		dec := json.NewDecoder(resp.Body)
 		var providerResp providerResponse
 		if err := dec.Decode(&providerResp); err != nil {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, DefaultProviderName, err)
+			logger.Error("sms provider response decode failed", "event", "provider.response.decode_failed", "outcome", "error", "status", resp.StatusCode, "error", err)
 			return gateway.ProviderResult{}, err
 		}
 		if err := dec.Decode(&struct{}{}); err != io.EOF {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, DefaultProviderName, err)
+			logger.Error("sms provider response trailing data", "event", "provider.response.trailing_data", "outcome", "error", "status", resp.StatusCode, "error", err)
 			return gateway.ProviderResult{}, errors.New("provider response has trailing data")
 		}
 		if providerResp.Status == "" {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, DefaultProviderName, "provider status missing")
+			logger.Error("sms provider response missing status", "event", "provider.response.invalid", "outcome", "error", "status", resp.StatusCode, "errorCode", "provider_status_missing")
 			return gateway.ProviderResult{}, errors.New("provider status missing")
 		}
 
-		log.Printf(
-			"sms provider response referenceId=%q provider=%q status=%q reason=%q",
-			req.ReferenceID,
-			DefaultProviderName,
-			providerResp.Status,
-			providerResp.Reason,
+		logger.Info(
+			"sms provider response",
+			"event", "provider.response",
+			"outcome", providerResp.Status,
+			"status", resp.StatusCode,
+			"providerStatus", providerResp.Status,
+			"providerReason", providerResp.Reason,
 		)
 		return gateway.ProviderResult{
 			Status: providerResp.Status,

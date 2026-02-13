@@ -5,7 +5,6 @@ import (
 	"errors"
 	"gateway"
 	"gateway/pii"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -36,6 +35,7 @@ func SmsKarixProviderCall(providerURL, apiKey, version, senderID string, connect
 		recipientMasked := maskRecipient(req.To)
 		messageLen := len(req.Message)
 		messageHash := pii.Hash(req.Message)
+		logger := providerLogger(SmsKarixProviderName, req.ReferenceID)
 
 		separator := "?"
 		if strings.Contains(providerURL, "?") {
@@ -60,32 +60,32 @@ func SmsKarixProviderCall(providerURL, apiKey, version, senderID string, connect
 
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 		if err != nil {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%q", req.ReferenceID, SmsKarixProviderName, "request_build_failed")
+			logger.Error("sms provider request build failed", "event", "provider.request.build_failed", "outcome", "error", "errorCode", "request_build_failed")
 			return gateway.ProviderResult{}, err
 		}
 
-		log.Printf(
-			"sms provider request referenceId=%q provider=%q url=%q recipientMasked=%q messageLen=%d messageHash=%q",
-			req.ReferenceID,
-			SmsKarixProviderName,
-			providerURL,
-			recipientMasked,
-			messageLen,
-			messageHash,
+		logger.Info(
+			"sms provider request",
+			"event", "provider.request",
+			"outcome", "attempt",
+			"url", providerURL,
+			"recipientMasked", recipientMasked,
+			"messageLen", messageLen,
+			"messageHash", messageHash,
 		)
 		resp, err := client.Do(httpReq)
 		if err != nil {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%q", req.ReferenceID, SmsKarixProviderName, "request_failed")
+			logger.Error("sms provider request failed", "event", "provider.request.failed", "outcome", "error", "errorCode", "request_failed")
 			return gateway.ProviderResult{}, err
 		}
 		defer resp.Body.Close()
 
-		log.Printf("sms provider response referenceId=%q provider=%q status=%d", req.ReferenceID, SmsKarixProviderName, resp.StatusCode)
+		logger.Info("sms provider response", "event", "provider.response", "outcome", "http_response", "status", resp.StatusCode)
 		if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
-			log.Printf("sms provider decision referenceId=%q provider=%q mapped=accepted", req.ReferenceID, SmsKarixProviderName)
+			logger.Info("sms provider decision", "event", "provider.decision", "outcome", "accepted", "status", resp.StatusCode, "mapped", "accepted")
 			return gateway.ProviderResult{Status: "accepted"}, nil
 		}
-		log.Printf("sms provider decision referenceId=%q provider=%q status=%d mapped=provider_failure", req.ReferenceID, SmsKarixProviderName, resp.StatusCode)
+		logger.Info("sms provider decision", "event", "provider.decision", "outcome", "provider_failure", "status", resp.StatusCode, "mapped", "provider_failure")
 		return gateway.ProviderResult{}, errors.New("provider non-2xx response")
 	}
 }

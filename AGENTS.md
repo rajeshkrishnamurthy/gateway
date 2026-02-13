@@ -37,6 +37,7 @@ If the mode is unclear, Codex must stop and ask.
 ## Repository Document Locations
 
 * Specs: `specs/`
+* Logging standard (cross-cutting): `specs/logging-standard.md`
 * Design notes: `designs/`
 * execplans: `plans/` (feature-specific execplan files)
 * Execution discipline: `backend/PLANS.md` (read-only)
@@ -48,7 +49,7 @@ If the mode is unclear, Codex must stop and ask.
 1. `AGENTS.md`
 2. Mode document: `agents/<MODE>.md`
 3. Component-level `AGENTS.md` files for the area being changed (e.g., `backend/AGENTS.md` when working in `backend/`)
-4. Relevant specs in `specs/`
+4. Relevant specs in `specs/` (for backend logging/parsing changes, `specs/logging-standard.md` is mandatory)
 5. Relevant design notes in `designs/` (when present)
 6. Existing execplan in `plans/` (when present and relevant to the change)
 7. README / operational docs (as needed)
@@ -82,3 +83,17 @@ SPEC → DESIGN (optional) → EXEC → VERIFY
 
 * Insist on DESIGN only when execplan cannot be deterministic without selecting a convention. 
 * If EXEC or VERIFY discovers missing/ambiguous intent, return to SPEC/DESIGN and restart the cycle.
+
+---
+
+## Logging Work Policy (Mandatory)
+
+For backend logging or log-parsing changes, work must not be treated as EXEC-only.
+
+Required mode coverage:
+
+* SPEC: define or update normative logging/parsing guarantees in `specs/logging-standard.md` (and any affected feature spec).
+* EXEC: implement code and tests to satisfy the frozen logging/parsing contract.
+* VERIFY: validate conformance against `specs/logging-standard.md` and report gaps.
+
+DESIGN remains optional for logging work and is required only when a bounded convention/mapping decision is unresolved by existing specs.

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"gateway"
 	"gateway/pii"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -36,6 +35,7 @@ func Sms24X7ProviderCall(providerURL, apiKey, serviceName, senderID string, conn
 		recipientMasked := maskRecipient(req.To)
 		messageLen := len(req.Message)
 		messageHash := pii.Hash(req.Message)
+		logger := providerLogger(Sms24X7ProviderName, req.ReferenceID)
 
 		encodedRecipient := url.QueryEscape(req.To)
 		encodedMessage := url.QueryEscape(req.Message)
@@ -58,34 +58,34 @@ func Sms24X7ProviderCall(providerURL, apiKey, serviceName, senderID string, conn
 
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, nil)
 		if err != nil {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%q", req.ReferenceID, Sms24X7ProviderName, "request_build_failed")
+			logger.Error("sms provider request build failed", "event", "provider.request.build_failed", "outcome", "error", "errorCode", "request_build_failed")
 			return gateway.ProviderResult{}, err
 		}
 
-		log.Printf(
-			"sms provider request referenceId=%q provider=%q url=%q recipientMasked=%q messageLen=%d messageHash=%q",
-			req.ReferenceID,
-			Sms24X7ProviderName,
-			providerURL,
-			recipientMasked,
-			messageLen,
-			messageHash,
+		logger.Info(
+			"sms provider request",
+			"event", "provider.request",
+			"outcome", "attempt",
+			"url", providerURL,
+			"recipientMasked", recipientMasked,
+			"messageLen", messageLen,
+			"messageHash", messageHash,
 		)
 		resp, err := client.Do(httpReq)
 		if err != nil {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%q", req.ReferenceID, Sms24X7ProviderName, "request_failed")
+			logger.Error("sms provider request failed", "event", "provider.request.failed", "outcome", "error", "errorCode", "request_failed")
 			return gateway.ProviderResult{}, err
 		}
 		defer resp.Body.Close()
 
-		log.Printf("sms provider response referenceId=%q provider=%q status=%d", req.ReferenceID, Sms24X7ProviderName, resp.StatusCode)
+		logger.Info("sms provider response", "event", "provider.response", "outcome", "http_response", "status", resp.StatusCode)
 
 		// We are looking for status codes in the 2xx range for success.
 		if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices { // http.StatusMultipleChoices is 300 status code.
-			log.Printf("sms provider decision referenceId=%q provider=%q mapped=accepted", req.ReferenceID, Sms24X7ProviderName)
+			logger.Info("sms provider decision", "event", "provider.decision", "outcome", "accepted", "status", resp.StatusCode, "mapped", "accepted")
 			return gateway.ProviderResult{Status: "accepted"}, nil
 		}
-		log.Printf("sms provider decision referenceId=%q provider=%q status=%d mapped=provider_failure", req.ReferenceID, Sms24X7ProviderName, resp.StatusCode)
+		logger.Info("sms provider decision", "event", "provider.decision", "outcome", "provider_failure", "status", resp.StatusCode, "mapped", "provider_failure")
 		return gateway.ProviderResult{}, errors.New("provider non-2xx response")
 	}
 }

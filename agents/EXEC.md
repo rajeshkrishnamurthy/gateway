@@ -28,6 +28,7 @@ No new user-visible requirements may be introduced in EXEC.
 * Frozen spec: `specs/<feature>.md` marked `EXEC-READY`
 * Design note (when present): `designs/<feature>.md` (approved conventions/mappings)
 * `backend/PLANS.md` (execution discipline; read-only)
+* Cross-cutting logging contract: `specs/logging-standard.md` (mandatory when implementation touches backend logging or log-parsing behavior)
 
 ## Outputs
 

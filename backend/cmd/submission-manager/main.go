@@ -18,6 +18,7 @@ import (
 
 	_ "github.com/microsoft/go-mssqldb"
 
+	setulog "gateway/logging"
 	"gateway/submission"
 	"gateway/submissionmanager"
 )
@@ -41,6 +42,7 @@ var (
 
 func main() {
 	flag.Parse()
+	setulog.Configure("submission-manager")
 
 	leaseDuration, err := parseDurationFlag("lease-duration", *leaseDurationFlag)
 	if err != nil {

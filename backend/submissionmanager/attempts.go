@@ -3,7 +3,8 @@ package submissionmanager
 import (
 	"context"
 	"fmt"
-	"log"
+	setulog "gateway/logging"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -19,6 +20,12 @@ const (
 
 func (m *Manager) executeAttempt(ctx context.Context, intentID string, due time.Time) {
 	// Flow intent: load intent, call gateway, apply policy, save result.
+	logger := slog.Default().With(
+		"component", "submission-manager-attempts",
+		"commProfile", setulog.CommProfileWithinSetu,
+		"operation", "execute_attempt",
+		"intentId", intentID,
+	)
 	fence, ok := m.currentFence()
 	if !ok {
 		return
@@ -38,7 +45,14 @@ func (m *Manager) executeAttempt(ctx context.Context, intentID string, due time.
 	if m.metrics != nil {
 		m.metrics.ObserveQueueDelay(start.Sub(due))
 	}
-	log.Printf("intentId=%q attempt=%d gatewayType=%s action=start", intentID, attemptCount+1, intent.Contract.GatewayType)
+	logger.Info(
+		"submission attempt start",
+		"event", "submission.attempt.start",
+		"stage", "attempt_start",
+		"outcome", "started",
+		"attempt", attemptCount+1,
+		"gatewayType", intent.Contract.GatewayType,
+	)
 	if intent.Contract.Policy == submission.PolicyDeadline {
 		deadline := intent.CreatedAt.Add(time.Duration(intent.Contract.MaxAcceptanceSeconds) * time.Second)
 		// Policy vs outcome: do not execute attempts after the acceptance deadline.
@@ -54,7 +68,14 @@ func (m *Manager) executeAttempt(ctx context.Context, intentID string, due time.
 				m.metrics.ObserveIntentTerminal(IntentExhausted, start.Sub(intent.CreatedAt))
 				m.metrics.ObserveExhausted("deadline_exceeded")
 			}
-			log.Printf("intentId=%q status=%s exhaustedReason=%s", intentID, IntentExhausted, "deadline_exceeded")
+			logger.Info(
+				"submission attempt exhausted before execution",
+				"event", "submission.attempt.policy_exhausted",
+				"stage", "policy_gate",
+				"outcome", string(IntentExhausted),
+				"status", IntentExhausted,
+				"exhaustedReason", "deadline_exceeded",
+			)
 			return
 		}
 	}
@@ -73,6 +94,7 @@ func (m *Manager) executeAttempt(ctx context.Context, intentID string, due time.
 	}
 
 	outcome, err := m.exec(ctx, AttemptInput{
+		IntentID:    intentID,
 		GatewayType: contract.GatewayType,
 		GatewayURL:  contract.GatewayURL,
 		Payload:     payload,
@@ -98,7 +120,19 @@ func (m *Manager) executeAttempt(ctx context.Context, intentID string, due time.
 	if retry {
 		nextDue = due.UTC().Format(time.RFC3339Nano)
 	}
-	log.Printf("intentId=%q attempt=%d outcomeStatus=%q outcomeReason=%q error=%q status=%s retry=%t nextDue=%s", intentID, attempt.Number, attempt.GatewayOutcome.Status, attempt.GatewayOutcome.Reason, attempt.Error, intent.Status, retry, nextDue)
+	logger.Info(
+		"submission attempt result",
+		"event", "submission.attempt.result",
+		"stage", "attempt_result",
+		"outcome", string(intent.Status),
+		"attempt", attempt.Number,
+		"outcomeStatus", attempt.GatewayOutcome.Status,
+		"outcomeReason", attempt.GatewayOutcome.Reason,
+		"error", attempt.Error,
+		"status", intent.Status,
+		"retry", retry,
+		"nextDue", nextDue,
+	)
 	var nextAttemptAt *time.Time
 	if retry {
 		nextAttemptAt = &due

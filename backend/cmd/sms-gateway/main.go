@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"gateway"
+	setulog "gateway/logging"
 	"gateway/metrics"
 	"log"
 	"net/http"
@@ -23,6 +24,7 @@ const version = "0.1.0"
 
 func main() {
 	flag.Parse()
+	setulog.Configure("sms-gateway")
 	if *showHelp {
 		flag.Usage()
 		return

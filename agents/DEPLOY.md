@@ -97,6 +97,12 @@ DEPLOY should strive for a stable workflow like:
 * `docker compose logs -f <service>`
 * `docker compose down`
 
+Repository convention:
+
+* Prefer `./docker-start` as the canonical local bring-up command for this repo.
+* `./docker-start` wraps `docker compose up -d --wait --wait-timeout 180 "$@"` so startup blocks until services are healthy (or timeout).
+* Use `docker compose logs` / `docker logs` for log inspection; `./docker-start` does not change the logging sink.
+
 ### Health and readiness
 
 * Every service should expose a clear health signal.
@@ -218,4 +224,3 @@ DEPLOY must stop and escalate if:
 * Provide rollback/recovery steps for any change.
 * Keep changes minimal and reviewer-friendly.
 * Prefer documentation and scripts over “tribal knowledge.”
-

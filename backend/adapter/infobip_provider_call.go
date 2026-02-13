@@ -7,7 +7,6 @@ import (
 	"errors"
 	"gateway"
 	"gateway/pii"
-	"log"
 	"net"
 	"net/http"
 	"time"
@@ -50,6 +49,7 @@ func SmsInfoBipProviderCall(providerURL, apiKey, senderID string, connectTimeout
 		recipientMasked := maskRecipient(req.To)
 		messageLen := len(req.Message)
 		messageHash := pii.Hash(req.Message)
+		logger := providerLogger(SmsInfoBipProviderName, req.ReferenceID)
 
 		requestBody := infoBipRequestBody{
 			Messages: []infoBipMessage{
@@ -64,40 +64,40 @@ func SmsInfoBipProviderCall(providerURL, apiKey, senderID string, connectTimeout
 		}
 		body, err := json.Marshal(requestBody)
 		if err != nil {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, SmsInfoBipProviderName, err)
+			logger.Error("sms provider request marshal failed", "event", "provider.request.encode_failed", "outcome", "error", "error", err)
 			return gateway.ProviderResult{}, err
 		}
 
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, providerURL, bytes.NewReader(body))
 		if err != nil {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, SmsInfoBipProviderName, err)
+			logger.Error("sms provider request build failed", "event", "provider.request.build_failed", "outcome", "error", "error", err)
 			return gateway.ProviderResult{}, err
 		}
 		httpReq.Header.Set("Content-Type", "application/json")
 		httpReq.Header.Set("App", apiKey)
 
-		log.Printf(
-			"sms provider request referenceId=%q provider=%q url=%q recipientMasked=%q messageLen=%d messageHash=%q",
-			req.ReferenceID,
-			SmsInfoBipProviderName,
-			providerURL,
-			recipientMasked,
-			messageLen,
-			messageHash,
+		logger.Info(
+			"sms provider request",
+			"event", "provider.request",
+			"outcome", "attempt",
+			"url", providerURL,
+			"recipientMasked", recipientMasked,
+			"messageLen", messageLen,
+			"messageHash", messageHash,
 		)
 		resp, err := client.Do(httpReq)
 		if err != nil {
-			log.Printf("sms provider error referenceId=%q provider=%q error=%v", req.ReferenceID, SmsInfoBipProviderName, err)
+			logger.Error("sms provider request failed", "event", "provider.request.failed", "outcome", "error", "error", err)
 			return gateway.ProviderResult{}, err
 		}
 		defer resp.Body.Close()
 
-		log.Printf("sms provider response referenceId=%q provider=%q status=%d", req.ReferenceID, SmsInfoBipProviderName, resp.StatusCode)
+		logger.Info("sms provider response", "event", "provider.response", "outcome", "http_response", "status", resp.StatusCode)
 		if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
-			log.Printf("sms provider decision referenceId=%q provider=%q mapped=accepted", req.ReferenceID, SmsInfoBipProviderName)
+			logger.Info("sms provider decision", "event", "provider.decision", "outcome", "accepted", "status", resp.StatusCode, "mapped", "accepted")
 			return gateway.ProviderResult{Status: "accepted"}, nil
 		}
-		log.Printf("sms provider decision referenceId=%q provider=%q status=%d mapped=provider_failure", req.ReferenceID, SmsInfoBipProviderName, resp.StatusCode)
+		logger.Info("sms provider decision", "event", "provider.decision", "outcome", "provider_failure", "status", resp.StatusCode, "mapped", "provider_failure")
 		return gateway.ProviderResult{}, errors.New("provider non-2xx response")
 	}
 }

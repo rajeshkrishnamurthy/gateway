@@ -5,8 +5,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	setulog "gateway/logging"
 	"gateway/metrics"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -139,7 +140,16 @@ func (g *SMSGateway) SendSMS(ctx context.Context, req SMSRequest) (SMSResponse, 
 		defer func() {
 			if r := recover(); r != nil {
 				panicRecovered = true
-				log.Printf("sms provider panic referenceId=%q panic=%v", req.ReferenceID, r)
+				slog.Default().With(
+					"component", "sms-gateway-core",
+					"commProfile", setulog.CommProfileOutsideToSetu,
+					"boundaryDirection", setulog.BoundaryDirectionEgress,
+					"peerSystem", "provider",
+					"operation", "provider_call",
+					"event", "gateway.provider.panic_recovered",
+					"outcome", "provider_failure",
+					"referenceId", req.ReferenceID,
+				).Error("sms provider panic recovered", "panic", r)
 				err = errors.New("provider panic")
 			}
 		}()

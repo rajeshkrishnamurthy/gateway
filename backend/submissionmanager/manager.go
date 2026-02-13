@@ -65,6 +65,7 @@ type GatewayOutcome struct {
 
 // AttemptInput provides resolved routing and payload for an attempt executor.
 type AttemptInput struct {
+	IntentID    string
 	GatewayType submission.GatewayType
 	GatewayURL  string
 	Payload     json.RawMessage

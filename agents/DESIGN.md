@@ -23,11 +23,14 @@ Examples:
 ## Inputs
 
 * Frozen or near-final feature spec in `specs/` (may be `EXEC-READY`)
+* `specs/logging-standard.md` when the design decision involves backend logging or log parsing
 * Existing repository conventions (if any)
 * Existing similar code implementation. Treat existing code as the current baseline unless explicitly called out. 
 * Re-use of patterns is strongly encouraged. 
 * Operational constraints (Docker Compose, HAProxy, environment variables, etc.)
 * Prior accepted behavior in `main` (if relevant)
+
+For logging/parsing work, DESIGN is optional and should be used only when a bounded convention/mapping decision is still unresolved by existing specs.
 
 ## Outputs
 

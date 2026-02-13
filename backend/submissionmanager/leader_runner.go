@@ -3,7 +3,8 @@ package submissionmanager
 import (
 	"context"
 	"errors"
-	"log"
+	setulog "gateway/logging"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -38,6 +39,7 @@ func NewLeaderRunnerFromManager(manager *Manager, cfg LeaseConfig) *LeaderRunner
 }
 
 func (r *LeaderRunner) Run(ctx context.Context) {
+	logger := r.logger()
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -54,9 +56,22 @@ func (r *LeaderRunner) Run(ctx context.Context) {
 
 		lease, acquired, err := r.store.acquireLease(ctx, r.cfg)
 		if err != nil {
-			log.Printf("leader_acquire_failed holder_id=%s sql_error=%v", r.cfg.HolderID, err)
+			logger.Warn(
+				"leader acquire failed",
+				"event", "leader_acquire_failed",
+				"stage", "acquire",
+				"outcome", "failed",
+				"holder_id", r.cfg.HolderID,
+				"sql_error", err,
+			)
 		} else if !acquired {
-			log.Printf("leader_acquire_failed holder_id=%s", r.cfg.HolderID)
+			logger.Debug(
+				"leader acquire not granted",
+				"event", "leader_acquire_failed",
+				"stage", "acquire",
+				"outcome", "not_acquired",
+				"holder_id", r.cfg.HolderID,
+			)
 		} else {
 			r.runLeader(ctx, lease)
 		}
@@ -89,6 +104,7 @@ func (r *LeaderRunner) CurrentLease() (holderID string, epoch int64, ok bool) {
 }
 
 func (r *LeaderRunner) runLeader(ctx context.Context, lease leaseRow) {
+	logger := r.logger()
 	lostCh := make(chan error, 1)
 	var lostOnce sync.Once
 	signalLoss := func(err error) {
@@ -111,7 +127,16 @@ func (r *LeaderRunner) runLeader(ctx context.Context, lease leaseRow) {
 		LeaseEpoch: lease.leaseEpoch,
 		ExpiresAt:  lease.expiresAt,
 	})
-	log.Printf("leader_acquired holder_id=%s lease_epoch=%d expires_at=%s", r.cfg.HolderID, lease.leaseEpoch, lease.expiresAt.UTC().Format(time.RFC3339Nano))
+	logger.Info(
+		"leader acquired",
+		"event", "leader_acquired",
+		"stage", "acquire",
+		"outcome", "acquired",
+		"holder_id", r.cfg.HolderID,
+		"lease_epoch", lease.leaseEpoch,
+		"leaseEpoch", lease.leaseEpoch,
+		"expires_at", lease.expiresAt.UTC().Format(time.RFC3339Nano),
+	)
 
 	cursor, err := r.manager.rebuildSchedule(ctx)
 	if err != nil {
@@ -122,9 +147,26 @@ func (r *LeaderRunner) runLeader(ctx context.Context, lease leaseRow) {
 		renewed, ok, err := r.store.renewLease(ctx, r.cfg, lease.leaseEpoch)
 		if err != nil || !ok {
 			if err != nil {
-				log.Printf("leader_renew_failed holder_id=%s lease_epoch=%d sql_error=%v", r.cfg.HolderID, lease.leaseEpoch, err)
+				logger.Warn(
+					"leader renew failed",
+					"event", "leader_renew_failed",
+					"stage", "renew",
+					"outcome", "failed",
+					"holder_id", r.cfg.HolderID,
+					"lease_epoch", lease.leaseEpoch,
+					"leaseEpoch", lease.leaseEpoch,
+					"sql_error", err,
+				)
 			} else {
-				log.Printf("leader_renew_failed holder_id=%s lease_epoch=%d", r.cfg.HolderID, lease.leaseEpoch)
+				logger.Warn(
+					"leader renew failed",
+					"event", "leader_renew_failed",
+					"stage", "renew",
+					"outcome", "failed",
+					"holder_id", r.cfg.HolderID,
+					"lease_epoch", lease.leaseEpoch,
+					"leaseEpoch", lease.leaseEpoch,
+				)
 			}
 			signalLoss(err)
 		} else {
@@ -134,7 +176,16 @@ func (r *LeaderRunner) runLeader(ctx context.Context, lease leaseRow) {
 				LeaseEpoch: renewed.leaseEpoch,
 				ExpiresAt:  renewed.expiresAt,
 			})
-			log.Printf("leader_renewed holder_id=%s lease_epoch=%d expires_at=%s", r.cfg.HolderID, renewed.leaseEpoch, renewed.expiresAt.UTC().Format(time.RFC3339Nano))
+			logger.Debug(
+				"leader renewed",
+				"event", "leader_renewed",
+				"stage", "renew",
+				"outcome", "renewed",
+				"holder_id", r.cfg.HolderID,
+				"lease_epoch", renewed.leaseEpoch,
+				"leaseEpoch", renewed.leaseEpoch,
+				"expires_at", renewed.expiresAt.UTC().Format(time.RFC3339Nano),
+			)
 		}
 	}
 
@@ -163,6 +214,7 @@ func (r *LeaderRunner) runLeader(ctx context.Context, lease leaseRow) {
 }
 
 func (r *LeaderRunner) runRenewLoop(ctx context.Context, epoch int64, signalLoss func(error)) {
+	logger := r.logger()
 	ticker := time.NewTicker(r.cfg.RenewInterval)
 	defer ticker.Stop()
 	for {
@@ -173,9 +225,26 @@ func (r *LeaderRunner) runRenewLoop(ctx context.Context, epoch int64, signalLoss
 			renewed, ok, err := r.store.renewLease(ctx, r.cfg, epoch)
 			if err != nil || !ok {
 				if err != nil {
-					log.Printf("leader_renew_failed holder_id=%s lease_epoch=%d sql_error=%v", r.cfg.HolderID, epoch, err)
+					logger.Warn(
+						"leader renew failed",
+						"event", "leader_renew_failed",
+						"stage", "renew",
+						"outcome", "failed",
+						"holder_id", r.cfg.HolderID,
+						"lease_epoch", epoch,
+						"leaseEpoch", epoch,
+						"sql_error", err,
+					)
 				} else {
-					log.Printf("leader_renew_failed holder_id=%s lease_epoch=%d", r.cfg.HolderID, epoch)
+					logger.Warn(
+						"leader renew failed",
+						"event", "leader_renew_failed",
+						"stage", "renew",
+						"outcome", "failed",
+						"holder_id", r.cfg.HolderID,
+						"lease_epoch", epoch,
+						"leaseEpoch", epoch,
+					)
 				}
 				signalLoss(err)
 				return
@@ -186,7 +255,16 @@ func (r *LeaderRunner) runRenewLoop(ctx context.Context, epoch int64, signalLoss
 				LeaseEpoch: renewed.leaseEpoch,
 				ExpiresAt:  renewed.expiresAt,
 			})
-			log.Printf("leader_renewed holder_id=%s lease_epoch=%d expires_at=%s", r.cfg.HolderID, renewed.leaseEpoch, renewed.expiresAt.UTC().Format(time.RFC3339Nano))
+			logger.Debug(
+				"leader renewed",
+				"event", "leader_renewed",
+				"stage", "renew",
+				"outcome", "renewed",
+				"holder_id", r.cfg.HolderID,
+				"lease_epoch", renewed.leaseEpoch,
+				"leaseEpoch", renewed.leaseEpoch,
+				"expires_at", renewed.expiresAt.UTC().Format(time.RFC3339Nano),
+			)
 		}
 	}
 }
@@ -210,12 +288,26 @@ func (r *LeaderRunner) runRefreshLoop(ctx context.Context, cursor scheduleCursor
 }
 
 func (r *LeaderRunner) dropLeadership(err error) {
+	logger := r.logger()
 	r.manager.setFollower()
 	r.setStatus(LeaseStatus{Mode: leaseModeFollower, HolderID: r.cfg.HolderID})
 	if err != nil {
-		log.Printf("leader_lost holder_id=%s sql_error=%v", r.cfg.HolderID, err)
+		logger.Warn(
+			"leader lost",
+			"event", "leader_lost",
+			"stage", "loss",
+			"outcome", "lost",
+			"holder_id", r.cfg.HolderID,
+			"sql_error", err,
+		)
 	} else {
-		log.Printf("leader_lost holder_id=%s", r.cfg.HolderID)
+		logger.Warn(
+			"leader lost",
+			"event", "leader_lost",
+			"stage", "loss",
+			"outcome", "lost",
+			"holder_id", r.cfg.HolderID,
+		)
 	}
 }
 
@@ -237,4 +329,12 @@ func sleepWithContext(ctx context.Context, delay time.Duration) bool {
 	case <-timer.C:
 		return true
 	}
+}
+
+func (r *LeaderRunner) logger() *slog.Logger {
+	return slog.Default().With(
+		"component", "submission-manager-leader",
+		"commProfile", setulog.CommProfileWithinSetu,
+		"operation", "leader_lease",
+	)
 }
